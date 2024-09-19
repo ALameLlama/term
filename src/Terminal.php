@@ -36,8 +36,8 @@ final class Terminal
     public static function new(
         Painter $painter = null,
         InformationProvider  $infoProvider = null,
-        EventProvider $eventProvider = null,
         RawMode $rawMode = null,
+        EventProvider $eventProvider = null,
     ): self {
         return new self(
             $painter ?? AnsiPainter::new(StreamWriter::stdout()),
