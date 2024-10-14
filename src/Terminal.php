@@ -10,8 +10,10 @@ use PhpTui\Term\EventProvider\SyncTtyEventProvider;
 use PhpTui\Term\InformationProvider\AggregateInformationProvider;
 use PhpTui\Term\InformationProvider\SizeFromEnvVarProvider;
 use PhpTui\Term\InformationProvider\SizeFromSttyProvider;
+use PhpTui\Term\InformationProvider\SizeFromWinProvider;
 use PhpTui\Term\Painter\AnsiPainter;
 use PhpTui\Term\RawMode\SttyRawMode;
+use PhpTui\Term\RawMode\WinRawMode;
 use PhpTui\Term\Writer\StreamWriter;
 
 final class Terminal
@@ -43,9 +45,9 @@ final class Terminal
             $painter ?? AnsiPainter::new(StreamWriter::stdout()),
             $infoProvider ?? AggregateInformationProvider::new([
                 SizeFromEnvVarProvider::new(),
-                SizeFromSttyProvider::new()
+                self::isWindows() ? SizeFromWinProvider::new() : SizeFromSttyProvider::new(),
             ]),
-            $rawMode ?? SttyRawMode::new(),
+            $rawMode ?? self::isWindows() ? WinRawMode::new() : SttyRawMode::new(),
             $eventProvider ?? new AggregateEventProvider([
                 SyncTtyEventProvider::new(),
                 SignalEventProvider::registered(),
@@ -105,5 +107,10 @@ final class Terminal
         foreach ($actions as $action) {
             $this->painter->paint([$action]);
         }
+    }
+
+    public static function isWindows(): bool
+    {
+        return strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
     }
 }
