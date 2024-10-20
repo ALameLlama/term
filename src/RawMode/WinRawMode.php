@@ -89,4 +89,9 @@ final class WinRawMode implements RawMode
     {
         return $this->originalSettings !== null;
     }
+
+    public function __destruct()
+    {
+        $this->ffi->SetConsoleMode($this->handle, $this->originalSettings);
+    }
 }
