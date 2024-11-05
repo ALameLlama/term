@@ -81,6 +81,12 @@ final class WinStreamReader implements Reader
         switch ($this->inputRecord[0]->EventType) {
             case self::KEY_EVENT:
                 $keyEvent = $this->inputRecord[0]->Event->KeyEvent;
+
+                // Prevent sending ctrl/alt/shift keys on their ow.
+                if ($keyEvent->uChar->UnicodeChar == 0) {
+                    break;
+                }
+
                 if ($keyEvent->bKeyDown) {
                     return $keyEvent->uChar->AsciiChar;
                 }
@@ -213,6 +219,7 @@ final class WinStreamReader implements Reader
             throw new Exception('Error getting input handle');
         }
 
+        //  TODO: this currenly always enable mouse, I'll want to move this to the enableMouseAction?
         $mode = $this->ffi->new('DWORD');
         $this->ffi->GetConsoleMode($this->stream, FFI::addr($mode));
 
