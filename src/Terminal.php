@@ -6,7 +6,7 @@ namespace PhpTui\Term;
 
 use PhpTui\Term\EventProvider\AggregateEventProvider;
 use PhpTui\Term\EventProvider\SignalEventProvider;
-use PhpTui\Term\EventProvider\SyncTtyEventProvider;
+use PhpTui\Term\EventProvider\SyncEventProvider;
 use PhpTui\Term\InformationProvider\AggregateInformationProvider;
 use PhpTui\Term\InformationProvider\SizeFromEnvVarProvider;
 use PhpTui\Term\InformationProvider\SizeFromSttyProvider;
@@ -49,7 +49,7 @@ final class Terminal
             ]),
             $rawMode ?? self::isWindows() ? WinRawMode::new() : SttyRawMode::new(),
             $eventProvider ?? new AggregateEventProvider([
-                SyncTtyEventProvider::new(),
+                SyncEventProvider::new(),
                 SignalEventProvider::registered(),
             ]),
         );

@@ -8,9 +8,9 @@ use PhpTui\Term\Event;
 use PhpTui\Term\EventParser;
 use PhpTui\Term\EventProvider;
 use PhpTui\Term\Reader;
-use PhpTui\Term\Reader\StreamReader;
+use PhpTui\Term\Terminal;
 
-final class SyncTtyEventProvider implements EventProvider
+final class SyncEventProvider implements EventProvider
 {
     /**
      * @var Event[]
@@ -23,7 +23,10 @@ final class SyncTtyEventProvider implements EventProvider
 
     public static function new(): self
     {
-        return new self(StreamReader::tty(), EventParser::new());
+        return new self(
+            Terminal::isWindows() ? Reader\WinStreamReader::new() : Reader\UnixStreamReader::new(),
+            EventParser::new()
+        );
     }
 
     public function next(): ?Event
@@ -31,14 +34,17 @@ final class SyncTtyEventProvider implements EventProvider
         while ($event = array_shift($this->buffer)) {
             return $event;
         }
+
         while (null !== $line = $this->reader->read()) {
             // TODO: pass true here if we read as much as we could as there
             // _could_ still be more in this case.
             $this->parser->advance($line, more: false);
         }
+
         foreach ($this->parser->drain() as $event) {
             $this->buffer[] = $event;
         }
+
         while ($event = array_shift($this->buffer)) {
             return $event;
         }
