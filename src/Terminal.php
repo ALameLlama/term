@@ -47,7 +47,7 @@ final class Terminal
                 SizeFromEnvVarProvider::new(),
                 self::isWindows() ? SizeFromWinProvider::new() : SizeFromSttyProvider::new(),
             ]),
-            $rawMode ?? self::isWindows() ? WinRawMode::new() : SttyRawMode::new(),
+            $rawMode ?? (self::isWindows() ? WinRawMode::new() : SttyRawMode::new()),
             $eventProvider ?? new AggregateEventProvider([
                 SyncEventProvider::new(),
                 SignalEventProvider::registered(),
