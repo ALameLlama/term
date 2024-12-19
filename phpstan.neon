@@ -5,3 +5,7 @@ parameters:
     paths:
         - src
         - tests
+    universalObjectCratesClasses:
+        - FFI\CData
+    ignoreErrors:
+    - '#Cannot access offset \d+ on FFI\\CData.+#'

@@ -8,7 +8,6 @@ use PhpTui\Term\Event;
 use PhpTui\Term\EventParser;
 use PhpTui\Term\EventProvider;
 use PhpTui\Term\Reader;
-use PhpTui\Term\Terminal;
 
 final class SyncEventProvider implements EventProvider
 {
@@ -24,7 +23,7 @@ final class SyncEventProvider implements EventProvider
     public static function new(): self
     {
         return new self(
-            Terminal::isWindows() ? Reader\WinStreamReader::new() : Reader\UnixStreamReader::new(),
+            Reader\StreamReader::new(),
             EventParser::new()
         );
     }

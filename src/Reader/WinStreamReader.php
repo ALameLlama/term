@@ -6,12 +6,10 @@ namespace PhpTui\Term\Reader;
 
 use FFI;
 use PhpTui\Term\Reader;
+use PhpTui\Term\WindowsConsole;
 
 final class WinStreamReader implements Reader
 {
-    // https://learn.microsoft.com/en-us/windows/console/getstdhandle
-    private const STD_INPUT_HANDLE = -10;
-
     // https://learn.microsoft.com/en-us/windows/console/setconsolemode
     private const ENABLE_EXTENDED_FLAGS = 0x0080;
     private const ENABLE_WINDOW_INPUT = 0x0008;
@@ -27,7 +25,6 @@ final class WinStreamReader implements Reader
     private const FROM_LEFT_1ST_BUTTON_PRESSED = 0x0001;
     private const RIGHTMOST_BUTTON_PRESSED = 0x0002;
     private const FROM_LEFT_2ND_BUTTON_PRESSED = 0x0004;
-
     private const MOUSE_MOVED = 0x0001;
     private const MOUSE_WHEELED = 0x0004;
     private const WHEEL_MASK = 0x8001;
@@ -37,7 +34,6 @@ final class WinStreamReader implements Reader
     private const ALT_PRESSED = 0x0002;
     private const CTRL_PRESSED = 0x0008;
     private const SHIFT_PRESSED = 0x0010;
-
 
     // FN keys - If there are more without ascii representation, we can add them here
     // https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
@@ -54,14 +50,6 @@ final class WinStreamReader implements Reader
     private const VK_F11 = 0x7A; // 122
     private const VK_F12 = 0x7B; // 123
 
-    private FFI $ffi;
-
-    private FFI\CData $stream;
-
-    private FFI\CData $inputRecord;
-
-    private FFI\CData $numEventsRead;
-
     private bool $pendingNull = false;
 
     private ?int $originalSettings = null;
@@ -70,14 +58,27 @@ final class WinStreamReader implements Reader
 
     private int $lastModifierState = 0;
 
+    private WindowsConsole $windowsConsole;
+
     private function __construct()
     {
-        $this->initializeWindowsFFI();
+        $this->windowsConsole = WindowsConsole::new();
+
+        //  TODO: this currently always enable mouse, I'll want to move this to the enableMouseAction?
+        //  This might also cause issues with raw mode since it wll try and reset the console mode too.
+        $mode = $this->windowsConsole->GetConsoleMode();
+        $this->originalSettings = $mode;
+        $this->windowsConsole->SetConsoleMode($mode | self::ENABLE_EXTRAS);
     }
 
+    /**
+     * @return void
+     */
     public function __destruct()
     {
-        $this->ffi->SetConsoleMode($this->stream, $this->originalSettings);
+        /**
+         * @phpstan-ignore-next-line */
+        $this->windowsConsole->SetConsoleMode($this->originalSettings);
     }
 
     public static function new(): self
@@ -98,15 +99,13 @@ final class WinStreamReader implements Reader
             return null;
         }
 
-        if (! $this->ffi->ReadConsoleInputA($this->stream, $this->inputRecord, 1, FFI::addr($this->numEventsRead))) {
-            return null;
-        }
+        $inputRecord = $this->windowsConsole->ReadConsoleInput(1);
 
         // TODO: See what other events need to get handled here
         // https://github.com/php-tui/term/blob/main/src/EventParser.php#L73
-        switch ($this->inputRecord[0]->EventType) {
+        switch ($inputRecord[0]->EventType) {
             case self::KEY_EVENT:
-                $keyEvent = $this->inputRecord[0]->Event->KeyEvent;
+                $keyEvent = $inputRecord[0]->Event->KeyEvent;
 
                 if ($keyEvent->bKeyDown) {
                     switch ($keyEvent->wVirtualKeyCode) {
@@ -134,9 +133,9 @@ final class WinStreamReader implements Reader
                 break;
 
             case self::MOUSE_EVENT:
-                return $this->calculateSGR($this->inputRecord[0]->Event->MouseEvent);
+                return $this->calculateSGR($inputRecord[0]->Event->MouseEvent);
             case self::FOCUS_EVENT:
-                $keyEvent = $this->inputRecord[0]->Event->FocusEvent;
+                $keyEvent = $inputRecord[0]->Event->FocusEvent;
 
                 $this->pendingNull = true;
 
@@ -227,94 +226,5 @@ final class WinStreamReader implements Reader
         }
 
         return null;
-    }
-
-    private function initializeWindowsFFI(): void
-    {
-        $header = <<<CLang
-            // Types
-            typedef void* HANDLE;
-            typedef unsigned long DWORD;
-            typedef short SHORT;
-            typedef unsigned short WORD;
-            typedef char CHAR;
-            typedef int BOOL;
-            
-            // https://learn.microsoft.com/en-us/windows/console/coord-str
-            typedef struct _COORD {
-                SHORT X;
-                SHORT Y;
-            } COORD;
-            
-            // https://learn.microsoft.com/en-us/windows/console/key-event-record-str
-            typedef struct _KEY_EVENT_RECORD {
-                int bKeyDown;
-                WORD wRepeatCount;
-                WORD wVirtualKeyCode;
-                WORD wVirtualScanCode;
-                union {
-                    CHAR AsciiChar;
-                    WORD UnicodeChar;
-                } uChar;
-                DWORD dwControlKeyState;
-            } KEY_EVENT_RECORD;
-            
-            // https://learn.microsoft.com/en-us/windows/console/mouse-event-record-str
-            typedef struct _MOUSE_EVENT_RECORD {
-                COORD dwMousePosition;
-                DWORD dwButtonState;
-                DWORD dwControlKeyState;
-                DWORD dwEventFlags;
-            } MOUSE_EVENT_RECORD;
-            
-            // https://learn.microsoft.com/en-us/windows/console/focus-event-record-str
-            typedef struct _FOCUS_EVENT_RECORD {
-                BOOL bSetFocus;
-            } FOCUS_EVENT_RECORD;
-            
-            // https://learn.microsoft.com/en-us/windows/console/input-record-str
-            typedef struct _INPUT_RECORD {
-                WORD EventType;
-                union {
-                    KEY_EVENT_RECORD KeyEvent;
-                    MOUSE_EVENT_RECORD MouseEvent;
-                    FOCUS_EVENT_RECORD FocusEvent;
-                } Event;
-            } INPUT_RECORD;
-            
-            // https://learn.microsoft.com/en-us/windows/console/getstdhandle
-            HANDLE GetStdHandle(DWORD nStdHandle);
-            // https://learn.microsoft.com/en-us/windows/console/getconsolemode
-            BOOL GetConsoleMode(HANDLE hConsoleHandle, DWORD* lpMode);
-            // https://learn.microsoft.com/en-us/windows/console/setconsolemode
-            BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
-            // https://learn.microsoft.com/en-us/windows/console/readconsoleinput
-            // ReadConsoleInputW (Unicode) and ReadConsoleInputA (ANSI)
-            BOOL ReadConsoleInputW(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
-            BOOL ReadConsoleInputA(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
-            CLang;
-
-        $this->ffi = FFI::cdef($header, 'kernel32.dll');
-
-        $this->stream = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
-
-        if (FFI::isNull($this->stream)) {
-            throw new Exception('Error getting input handle');
-        }
-
-        //  TODO: this currently always enable mouse, I'll want to move this to the enableMouseAction?
-        $mode = $this->ffi->new('DWORD');
-        $this->ffi->GetConsoleMode($this->stream, FFI::addr($mode));
-
-        $this->originalSettings = $mode->cdata;
-        $newMode = $mode->cdata | self::ENABLE_EXTRAS;
-
-        $this->ffi->SetConsoleMode(
-            $this->stream,
-            $newMode
-        );
-
-        $this->inputRecord = $this->ffi->new('INPUT_RECORD[1]');
-        $this->numEventsRead = $this->ffi->new('DWORD');
     }
 }

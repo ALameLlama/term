@@ -52,6 +52,8 @@ final class WinRawMode implements RawMode
             return;
         }
 
+        /**
+         * @phpstan-ignore-next-line */
         $this->windowsConsole->SetConsoleMode($this->originalSettings);
 
         $this->originalSettings = null;
