@@ -9,11 +9,9 @@ use PhpTui\Term\EventProvider\SignalEventProvider;
 use PhpTui\Term\EventProvider\SyncEventProvider;
 use PhpTui\Term\InformationProvider\AggregateInformationProvider;
 use PhpTui\Term\InformationProvider\SizeFromEnvVarProvider;
-use PhpTui\Term\InformationProvider\SizeFromSttyProvider;
-use PhpTui\Term\InformationProvider\SizeFromWinProvider;
+use PhpTui\Term\InformationProvider\SizeFromProvider;
+use PhpTui\Term\RawMode\RawMode as RawModeProvider;
 use PhpTui\Term\Painter\AnsiPainter;
-use PhpTui\Term\RawMode\SttyRawMode;
-use PhpTui\Term\RawMode\WinRawMode;
 use PhpTui\Term\Writer\StreamWriter;
 
 final class Terminal
@@ -45,9 +43,9 @@ final class Terminal
             $painter ?? AnsiPainter::new(StreamWriter::stdout()),
             $infoProvider ?? AggregateInformationProvider::new([
                 SizeFromEnvVarProvider::new(),
-                self::isWindows() ? SizeFromWinProvider::new() : SizeFromSttyProvider::new(),
+                SizeFromProvider::new(),
             ]),
-            $rawMode ?? (self::isWindows() ? WinRawMode::new() : SttyRawMode::new()),
+            $rawMode ?? RawModeProvider::new(),
             $eventProvider ?? new AggregateEventProvider([
                 SyncEventProvider::new(),
                 SignalEventProvider::registered(),

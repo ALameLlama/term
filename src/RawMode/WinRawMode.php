@@ -4,15 +4,11 @@ declare(strict_types=1);
 
 namespace PhpTui\Term\RawMode;
 
-use FFI;
 use PhpTui\Term\RawMode;
-use RuntimeException;
+use PhpTui\Term\WindowsConsole;
 
 final class WinRawMode implements RawMode
 {
-    // https://learn.microsoft.com/en-us/windows/console/getstdhandle
-    private const STD_INPUT_HANDLE = -10;
-
     // https://learn.microsoft.com/en-us/windows/console/setconsolemode
     private const ENABLE_PROCESSED_INPUT = 0x0001;
     private const ENABLE_LINE_INPUT = 0x0002;
@@ -20,41 +16,13 @@ final class WinRawMode implements RawMode
     private const ENABLE_QUICK_EDIT_MODE = 0x0040;
     private const NOT_RAW_MODE_MASK = self::ENABLE_LINE_INPUT | self::ENABLE_ECHO_INPUT | self::ENABLE_PROCESSED_INPUT | self::ENABLE_QUICK_EDIT_MODE;
 
-    private FFI $ffi;
-
-    private FFI\CData $handle;
-
     private ?int $originalSettings = null;
+
+    private WindowsConsole $windowsConsole;
 
     public function __construct()
     {
-        $header = <<<CLang
-            // Types
-            typedef void* HANDLE;
-            typedef unsigned long DWORD;
-            typedef int BOOL;
-            
-            // https://learn.microsoft.com/en-us/windows/console/getstdhandle
-            HANDLE GetStdHandle(DWORD nStdHandle);
-            // https://learn.microsoft.com/en-us/windows/console/getconsolemode
-            BOOL GetConsoleMode(HANDLE hConsoleHandle, DWORD* lpMode);
-            // https://learn.microsoft.com/en-us/windows/console/setconsolemode
-            BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
-            CLang;
-
-        $this->ffi = FFI::cdef($header, 'kernel32.dll');
-
-        // Use the class constants to get the handle
-        $this->handle = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
-
-        if (FFI::isNull($this->handle)) {
-            throw new RuntimeException('Failed to get console handle');
-        }
-    }
-
-    public function __destruct()
-    {
-        $this->ffi->SetConsoleMode($this->handle, $this->originalSettings);
+        $this->windowsConsole = WindowsConsole::new();
     }
 
     public static function new(): self
@@ -69,19 +37,13 @@ final class WinRawMode implements RawMode
             return;
         }
 
-        $mode = $this->ffi->new('DWORD');
+        $mode = $this->windowsConsole->GetConsoleMode();
 
-        if (! $this->ffi->GetConsoleMode($this->handle, FFI::addr($mode))) {
-            throw new RuntimeException('Failed to get console mode');
-        }
+        $this->originalSettings = $mode;
 
-        $this->originalSettings = $mode->cdata;
+        $newMode = $mode &= ~self::NOT_RAW_MODE_MASK;
 
-        $newMode = $mode->cdata &= ~self::NOT_RAW_MODE_MASK;
-
-        if (! $this->ffi->SetConsoleMode($this->handle, $newMode)) {
-            throw new RuntimeException('Failed to set console to raw mode');
-        }
+        $this->windowsConsole->SetConsoleMode($newMode);
     }
 
     public function disable(): void
@@ -90,9 +52,7 @@ final class WinRawMode implements RawMode
             return;
         }
 
-        if (! $this->ffi->SetConsoleMode($this->handle, $this->originalSettings)) {
-            throw new RuntimeException('Failed to restore console mode');
-        }
+        $this->windowsConsole->SetConsoleMode($this->originalSettings);
 
         $this->originalSettings = null;
     }
