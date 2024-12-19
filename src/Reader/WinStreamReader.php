@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace PhpTui\Term\Reader;
 
-use FFI;
+use FFI\CData;
 use PhpTui\Term\Reader;
 use PhpTui\Term\WindowsConsole;
 
@@ -49,6 +49,18 @@ final class WinStreamReader implements Reader
     private const VK_F10 = 0x79; // 121
     private const VK_F11 = 0x7A; // 122
     private const VK_F12 = 0x7B; // 123
+    private const VK_F13 = 0x7C; // 124
+    private const VK_F14 = 0x7D; // 125
+    private const VK_F15 = 0x7E; // 126
+    private const VK_F16 = 0x7F; // 127
+    private const VK_F17 = 0x80; // 128
+    private const VK_F18 = 0x81; // 129
+    private const VK_F19 = 0x82; // 130
+    private const VK_F20 = 0x83; // 131
+    private const VK_F21 = 0x84; // 132
+    private const VK_F22 = 0x85; // 133
+    private const VK_F23 = 0x86; // 134
+    private const VK_F24 = 0x87; // 135
 
     private bool $pendingNull = false;
 
@@ -89,7 +101,7 @@ final class WinStreamReader implements Reader
     public function read(): ?string
     {
         // We only parse the stream when we return a null.
-        // With Key events, this is easy since we return null on release
+        // With Key events, we need to set a flag to return null on the next loop to mimic unix behavior.
         // With Mouse events, we need to return null on the next loop,
         // or we are stuck waiting for something else to trigger this.
         // If we have a pending null return, return it and clear the flag
@@ -109,18 +121,30 @@ final class WinStreamReader implements Reader
 
                 if ($keyEvent->bKeyDown) {
                     switch ($keyEvent->wVirtualKeyCode) {
-                        case self::VK_F1:  return "\x1B[11~";
-                        case self::VK_F2:  return "\x1B[12~";
-                        case self::VK_F3:  return "\x1B[13~";
-                        case self::VK_F4:  return "\x1B[14~";
-                        case self::VK_F5:  return "\x1B[15~";
-                        case self::VK_F6:  return "\x1B[17~";
-                        case self::VK_F7:  return "\x1B[18~";
-                        case self::VK_F8:  return "\x1B[19~";
-                        case self::VK_F9:  return "\x1B[20~";
-                        case self::VK_F10: return "\x1B[21~";
-                        case self::VK_F11: return "\x1B[23~";
-                        case self::VK_F12: return "\x1B[24~";
+                        case self::VK_F1:  return $this->sendKey("\x1B[11~");
+                        case self::VK_F2:  return $this->sendKey("\x1B[12~");
+                        case self::VK_F3:  return $this->sendKey("\x1B[13~");
+                        case self::VK_F4:  return $this->sendKey("\x1B[14~");
+                        case self::VK_F5:  return $this->sendKey("\x1B[15~");
+                        case self::VK_F6:  return $this->sendKey("\x1B[17~");
+                        case self::VK_F7:  return $this->sendKey("\x1B[18~");
+                        case self::VK_F8:  return $this->sendKey("\x1B[19~");
+                        case self::VK_F9:  return $this->sendKey("\x1B[20~");
+                        case self::VK_F10: return $this->sendKey("\x1B[21~");
+                        case self::VK_F11: return $this->sendKey("\x1B[23~");
+                        case self::VK_F12: return $this->sendKey("\x1B[24~");
+                        case self::VK_F13: return $this->sendKey("\x1B[25~");
+                        case self::VK_F14: return $this->sendKey("\x1B[26~");
+                        case self::VK_F15: return $this->sendKey("\x1B[27~");
+                        case self::VK_F16: return $this->sendKey("\x1B[28~");
+                        case self::VK_F17: return $this->sendKey("\x1B[29~");
+                        case self::VK_F18: return $this->sendKey("\x1B[30~");
+                        case self::VK_F19: return $this->sendKey("\x1B[31~");
+                        case self::VK_F20: return $this->sendKey("\x1B[32~");
+                        case self::VK_F21: return $this->sendKey("\x1B[33~");
+                        case self::VK_F22: return $this->sendKey("\x1B[34~");
+                        case self::VK_F23: return $this->sendKey("\x1B[35~");
+                        case self::VK_F24: return $this->sendKey("\x1B[36~");
                     }
 
                     // Prevent sending ctrl/alt/shift keys on their own.
@@ -128,7 +152,7 @@ final class WinStreamReader implements Reader
                         break;
                     }
 
-                    return $keyEvent->uChar->AsciiChar;
+                    return $this->sendKey($keyEvent->uChar->AsciiChar);
                 }
                 break;
 
@@ -147,7 +171,7 @@ final class WinStreamReader implements Reader
         return null;
     }
 
-    private function calculateSGR(FFi\CData $mouseEvent): ?string
+    private function calculateSGR(CData $mouseEvent): ?string
     {
         $x = $mouseEvent->dwMousePosition->X + 1;
         $y = $mouseEvent->dwMousePosition->Y + 1;
@@ -226,5 +250,12 @@ final class WinStreamReader implements Reader
         }
 
         return null;
+    }
+
+    private function sendKey(string $key): string
+    {
+        $this->pendingNull = true;
+
+        return $key;
     }
 }
