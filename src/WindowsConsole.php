@@ -21,8 +21,11 @@ final class WindowsConsole
 
     private FFI\CData $handle;
 
-    private ?int $originalSettings = null;
+    private FFI\CData $mode;
 
+    private FFI\CData $inputRecord;
+
+    private FFI\CData $numEventsRead;
 
     public function __construct()
     {
@@ -91,7 +94,18 @@ final class WindowsConsole
 
         $this->ffi = FFI::cdef($header, 'kernel32.dll');
 
-        // Use the class constants to get the handle
+        /**
+         * @phpstan-ignore-next-line */
+        $this->mode = $this->ffi->new('DWORD');
+
+        /**
+         * @phpstan-ignore-next-line */
+        $this->inputRecord = $this->ffi->new('INPUT_RECORD[1]');
+
+        /**
+         * @phpstan-ignore-next-line */
+        $this->numEventsRead = $this->ffi->new('DWORD');
+
         /**
          * @phpstan-ignore-next-line */
         $this->handle = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
@@ -99,16 +113,6 @@ final class WindowsConsole
         if (FFI::isNull($this->handle)) {
             throw new RuntimeException('Failed to get console handle');
         }
-    }
-
-    /**
-     * @return void
-     */
-    public function __destruct()
-    {
-        /**
-         * @phpstan-ignore-next-line */
-        $this->ffi->SetConsoleMode($this->handle, $this->originalSettings);
     }
 
     public static function new(): self
@@ -127,37 +131,23 @@ final class WindowsConsole
 
     public function GetConsoleMode(): int
     {
-        // TODO: look into using reuse DWORD here
-        // Will this cause oom issues? should I reuse a DWORD here?
-        $mode = $this->ffi->new('DWORD');
-
         /**
          * @phpstan-ignore-next-line */
-        if (! $this->ffi->GetConsoleMode($this->handle, FFI::addr($mode))) {
+        if (! $this->ffi->GetConsoleMode($this->handle, FFI::addr($this->mode))) {
             throw new RuntimeException('Failed to get console mode');
         }
 
         /**
          * @phpstan-ignore-next-line */
-        return $mode->cdata;
+        return $this->mode->cdata;
     }
 
     public function ReadConsoleInput(int $length): FFI\CData
     {
-        // TODO: Look into reusing vars here, might cause OOM issues.
-        /**
-        * @var FFI\CData $inputRecord
-        */
-        $inputRecord = $this->ffi->new('INPUT_RECORD[1]');
-        /**
-        * @var FFI\CData $numEventsRead
-        */
-        $numEventsRead = $this->ffi->new('DWORD');
-
         /**
          * @phpstan-ignore-next-line */
-        $this->ffi->ReadConsoleInputA($this->handle, $inputRecord, $length, FFI::addr($numEventsRead));
+        $this->ffi->ReadConsoleInputA($this->handle, $this->inputRecord, $length, FFI::addr($this->numEventsRead));
 
-        return $inputRecord;
+        return $this->inputRecord;
     }
 }

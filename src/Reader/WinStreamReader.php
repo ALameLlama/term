@@ -10,12 +10,6 @@ use PhpTui\Term\WindowsConsole;
 
 final class WinStreamReader implements Reader
 {
-    // https://learn.microsoft.com/en-us/windows/console/setconsolemode
-    private const ENABLE_EXTENDED_FLAGS = 0x0080;
-    private const ENABLE_WINDOW_INPUT = 0x0008;
-    private const ENABLE_MOUSE_INPUT = 0x0010;
-    private const ENABLE_EXTRAS = self::ENABLE_EXTENDED_FLAGS | self::ENABLE_WINDOW_INPUT | self::ENABLE_MOUSE_INPUT;
-
     // https://learn.microsoft.com/en-us/windows/console/input-record-str
     private const KEY_EVENT = 0x0001;
     private const MOUSE_EVENT = 0x0002;
@@ -64,8 +58,6 @@ final class WinStreamReader implements Reader
 
     private bool $pendingNull = false;
 
-    private ?int $originalSettings = null;
-
     private int $lastPressedButton = 0;
 
     private int $lastModifierState = 0;
@@ -75,22 +67,6 @@ final class WinStreamReader implements Reader
     private function __construct()
     {
         $this->windowsConsole = WindowsConsole::new();
-
-        //  TODO: this currently always enable mouse, I'll want to move this to the enableMouseAction?
-        //  This might also cause issues with raw mode since it wll try and reset the console mode too.
-        $mode = $this->windowsConsole->GetConsoleMode();
-        $this->originalSettings = $mode;
-        $this->windowsConsole->SetConsoleMode($mode | self::ENABLE_EXTRAS);
-    }
-
-    /**
-     * @return void
-     */
-    public function __destruct()
-    {
-        /**
-         * @phpstan-ignore-next-line */
-        $this->windowsConsole->SetConsoleMode($this->originalSettings);
     }
 
     public static function new(): self
