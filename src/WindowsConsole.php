@@ -16,6 +16,7 @@ final class WindowsConsole
      * @method FFI\CData GetStdHandle(int $nStdHandle)
      * @method bool GetConsoleMode(FFI\CData $hConsoleHandle, FFI\CData $lpMode)
      * @method bool SetConsoleMode(FFI\CData $hConsoleHandle, int $dwMode)
+     * @method bool ReadConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
      */
     private FFI $ffi;
 
@@ -120,7 +121,7 @@ final class WindowsConsole
         return new self();
     }
 
-    public function SetConsoleMode(int $mode): void
+    public function setConsoleMode(int $mode): void
     {
         /**
          * @phpstan-ignore-next-line */
@@ -129,7 +130,7 @@ final class WindowsConsole
         }
     }
 
-    public function GetConsoleMode(): int
+    public function getConsoleMode(): int
     {
         /**
          * @phpstan-ignore-next-line */
@@ -142,7 +143,7 @@ final class WindowsConsole
         return $this->mode->cdata;
     }
 
-    public function ReadConsoleInput(int $length): FFI\CData
+    public function readConsoleInput(int $length): FFI\CData
     {
         /**
          * @phpstan-ignore-next-line */

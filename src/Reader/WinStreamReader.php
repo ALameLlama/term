@@ -87,7 +87,7 @@ final class WinStreamReader implements Reader
             return null;
         }
 
-        $inputRecord = $this->windowsConsole->ReadConsoleInput(1);
+        $inputRecord = $this->windowsConsole->readConsoleInput(1);
 
         // TODO: See what other events need to get handled here
         // https://github.com/php-tui/term/blob/main/src/EventParser.php#L73

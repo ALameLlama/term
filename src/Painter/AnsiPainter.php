@@ -89,11 +89,11 @@ final class AnsiPainter implements Painter
                 $enableMouseInput = 0x0010;
                 $enableExtras = $enableExtendedFlags| $enableWindowInput | $enableMouseInput;
                 if ($action->enable) {
-                    $mode = $windowsConsole->GetConsoleMode();
-                    $windowsConsole->SetConsoleMode($mode | $enableExtras);
+                    $mode = $windowsConsole->getConsoleMode();
+                    $windowsConsole->setConsoleMode($mode | $enableExtras);
                 } else {
-                    $mode = $windowsConsole->GetConsoleMode();
-                    $windowsConsole->SetConsoleMode($mode & ~$enableExtras);
+                    $mode = $windowsConsole->getConsoleMode();
+                    $windowsConsole->setConsoleMode($mode & ~$enableExtras);
                 }
             } else {
                 $this->writer->write(implode('', array_map(fn (string $code): string => $this->csi($code), $action->enable ? [

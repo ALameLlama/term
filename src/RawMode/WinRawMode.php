@@ -37,13 +37,13 @@ final class WinRawMode implements RawMode
             return;
         }
 
-        $mode = $this->windowsConsole->GetConsoleMode();
+        $mode = $this->windowsConsole->getConsoleMode();
 
         $this->originalSettings = $mode;
 
         $newMode = $mode &= ~self::NOT_RAW_MODE_MASK;
 
-        $this->windowsConsole->SetConsoleMode($newMode);
+        $this->windowsConsole->setConsoleMode($newMode);
     }
 
     public function disable(): void
@@ -54,7 +54,7 @@ final class WinRawMode implements RawMode
 
         /**
          * @phpstan-ignore-next-line */
-        $this->windowsConsole->SetConsoleMode($this->originalSettings);
+        $this->windowsConsole->setConsoleMode($this->originalSettings);
 
         $this->originalSettings = null;
     }
