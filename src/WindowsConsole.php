@@ -11,11 +11,13 @@ final class WindowsConsole
 {
     // https://learn.microsoft.com/en-us/windows/console/getstdhandle
     private const STD_INPUT_HANDLE = -10;
+    private const STD_OUTPUT_HANDLE = -11;
 
     /**
      * @method FFI\CData GetStdHandle(int $nStdHandle)
      * @method bool GetConsoleMode(FFI\CData $hConsoleHandle, FFI\CData $lpMode)
      * @method bool SetConsoleMode(FFI\CData $hConsoleHandle, int $dwMode)
+     * @method bool GetConsoleScreenBufferInfo(FFI\CData $hConsoleOutput, FFI\CData $lpConsoleScreenBufferInfo)
      * @method bool ReadConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
      * @method bool ReadConsoleInputW(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
      * @method bool PeekConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
@@ -23,7 +25,11 @@ final class WindowsConsole
      */
     private FFI $ffi;
 
-    private FFI\CData $handle;
+    private FFI\CData $handleIn;
+
+    private FFI\CData $handleOut;
+
+    private FFI\CData $consoleBufferInfo;
 
     private FFI\CData $mode;
 
@@ -87,6 +93,23 @@ final class WindowsConsole
                     FOCUS_EVENT_RECORD FocusEvent;
                 } Event;
             } INPUT_RECORD;
+
+            // https://learn.microsoft.com/en-us/windows/console/small-rect-str
+            typedef struct _SMALL_RECT {
+                SHORT Left;
+                SHORT Top;
+                SHORT Right;
+                SHORT Bottom;
+            } SMALL_RECT;
+
+            // https://learn.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
+            typedef struct _CONSOLE_SCREEN_BUFFER_INFO {
+                COORD dwSize;
+                COORD dwCursorPosition;
+                WORD wAttributes;
+                SMALL_RECT srWindow;
+                COORD dwMaximumWindowSize;
+            } CONSOLE_SCREEN_BUFFER_INFO;
             
             // https://learn.microsoft.com/en-us/windows/console/getstdhandle
             HANDLE GetStdHandle(DWORD nStdHandle);
@@ -94,6 +117,8 @@ final class WindowsConsole
             BOOL GetConsoleMode(HANDLE hConsoleHandle, DWORD* lpMode);
             // https://learn.microsoft.com/en-us/windows/console/setconsolemode
             BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
+            // https://learn.microsoft.com/en-us/windows/console/getconsolescreenbufferinfo
+            BOOL GetConsoleScreenBufferInfo(HANDLE hConsoleOutput, CONSOLE_SCREEN_BUFFER_INFO* lpConsoleScreenBufferInfo);
             // https://learn.microsoft.com/en-us/windows/console/readconsoleinput
             // ReadConsoleInputW (Unicode) and ReadConsoleInputA (ANSI)
             BOOL ReadConsoleInputW(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
@@ -104,6 +129,26 @@ final class WindowsConsole
             CLang;
 
         $this->ffi = FFI::cdef($header, 'kernel32.dll');
+
+        /**
+         * @phpstan-ignore-next-line */
+        $this->handleIn = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
+
+        if (FFI::isNull($this->handleIn)) {
+            throw new RuntimeException('Failed to get console handle');
+        }
+
+        /**
+         * @phpstan-ignore-next-line */
+        $this->handleOut = $this->ffi->GetStdHandle(self::STD_OUTPUT_HANDLE);
+
+        if (FFI::isNull($this->handleOut)) {
+            throw new RuntimeException('Failed to get console handle');
+        }
+
+        /**
+         * @phpstan-ignore-next-line */
+        $this->consoleBufferInfo = $this->ffi->new('CONSOLE_SCREEN_BUFFER_INFO');
 
         /**
          * @phpstan-ignore-next-line */
@@ -124,13 +169,6 @@ final class WindowsConsole
         /**
          * @phpstan-ignore-next-line */
         $this->numEventsPeek = $this->ffi->new('DWORD');
-        /**
-         * @phpstan-ignore-next-line */
-        $this->handle = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
-
-        if (FFI::isNull($this->handle)) {
-            throw new RuntimeException('Failed to get console handle');
-        }
     }
 
     public static function new(): self
@@ -142,7 +180,7 @@ final class WindowsConsole
     {
         /**
          * @phpstan-ignore-next-line */
-        if (! $this->ffi->SetConsoleMode($this->handle, $mode)) {
+        if (! $this->ffi->SetConsoleMode($this->handleIn, $mode)) {
             throw new RuntimeException('Failed to set console to raw mode');
         }
     }
@@ -151,7 +189,7 @@ final class WindowsConsole
     {
         /**
          * @phpstan-ignore-next-line */
-        if (! $this->ffi->GetConsoleMode($this->handle, FFI::addr($this->mode))) {
+        if (! $this->ffi->GetConsoleMode($this->handleIn, FFI::addr($this->mode))) {
             throw new RuntimeException('Failed to get console mode');
         }
 
@@ -164,7 +202,7 @@ final class WindowsConsole
     {
         /**
          * @phpstan-ignore-next-line */
-        $this->ffi->ReadConsoleInputA($this->handle, $this->inputRecordRead, $length, FFI::addr($this->numEventsRead));
+        $this->ffi->ReadConsoleInputA($this->handleIn, $this->inputRecordRead, $length, FFI::addr($this->numEventsRead));
 
         return $this->inputRecordRead;
     }
@@ -173,8 +211,33 @@ final class WindowsConsole
     {
         /**
          * @phpstan-ignore-next-line */
-        $this->ffi->PeekConsoleInputA($this->handle, $this->inputRecordPeek, $length, FFI::addr($this->numEventsPeek));
+        $this->ffi->PeekConsoleInputA($this->handleIn, $this->inputRecordPeek, $length, FFI::addr($this->numEventsPeek));
 
         return $this->numEventsPeek;
+    }
+
+    /**
+    * @return array{screenBufferSize: array{x: int, y: int}, cursorPosition: array{x: int, y: int}, windowSize: array{width: int, height: int}, maximumWindowSize: array{x: int, y: int}, attributes: int}
+    */
+    public function getConsoleScreenBufferInfo(): array
+    {
+        /**
+         * @phpstan-ignore-next-line */
+        if (! $this->ffi->GetConsoleScreenBufferInfo($this->handleOut, FFI::addr($this->consoleBufferInfo))) {
+            throw new RuntimeException('Failed to get console screen buffer info');
+        }
+
+        $info = $this->consoleBufferInfo;
+
+        return [
+            'screenBufferSize' => ['x' => $info->dwSize->X, 'y' => $info->dwSize->Y],
+            'cursorPosition' => ['x' => $info->dwCursorPosition->X, 'y' => $info->dwCursorPosition->Y],
+            'windowSize' => [
+                'width' => $info->srWindow->Right - $info->srWindow->Left + 1,
+                'height' => $info->srWindow->Bottom - $info->srWindow->Top + 1,
+            ],
+            'maximumWindowSize' => ['x' => $info->dwMaximumWindowSize->X, 'y' => $info->dwMaximumWindowSize->Y],
+            'attributes' => $info->wAttributes,
+        ];
     }
 }

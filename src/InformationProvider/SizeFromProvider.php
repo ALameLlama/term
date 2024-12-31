@@ -11,6 +11,6 @@ final class SizeFromProvider
 {
     public static function new(?ProcessRunner $processRunner = null): SizeFromWinProvider|SizeFromSttyProvider
     {
-        return Terminal::isWindows() ? SizeFromWinProvider::new($processRunner) : SizeFromSttyProvider::new($processRunner);
+        return Terminal::isWindows() ? SizeFromWinProvider::new() : SizeFromSttyProvider::new($processRunner);
     }
 }
