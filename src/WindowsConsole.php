@@ -17,6 +17,9 @@ final class WindowsConsole
      * @method bool GetConsoleMode(FFI\CData $hConsoleHandle, FFI\CData $lpMode)
      * @method bool SetConsoleMode(FFI\CData $hConsoleHandle, int $dwMode)
      * @method bool ReadConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
+     * @method bool ReadConsoleInputW(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
+     * @method bool PeekConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
+     * @method bool PeekConsoleInputW(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
      */
     private FFI $ffi;
 
@@ -24,9 +27,13 @@ final class WindowsConsole
 
     private FFI\CData $mode;
 
-    private FFI\CData $inputRecord;
+    private FFI\CData $inputRecordRead;
 
     private FFI\CData $numEventsRead;
+
+    private FFI\CData $inputRecordPeek;
+
+    private FFI\CData $numEventsPeek;
 
     public function __construct()
     {
@@ -91,6 +98,9 @@ final class WindowsConsole
             // ReadConsoleInputW (Unicode) and ReadConsoleInputA (ANSI)
             BOOL ReadConsoleInputW(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
             BOOL ReadConsoleInputA(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
+            // https://learn.microsoft.com/en-us/windows/console/peekconsoleinput
+            BOOL PeekConsoleInputW(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
+            BOOL PeekConsoleInputA(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
             CLang;
 
         $this->ffi = FFI::cdef($header, 'kernel32.dll');
@@ -101,12 +111,19 @@ final class WindowsConsole
 
         /**
          * @phpstan-ignore-next-line */
-        $this->inputRecord = $this->ffi->new('INPUT_RECORD[1]');
+        $this->inputRecordRead = $this->ffi->new('INPUT_RECORD[1]');
 
         /**
          * @phpstan-ignore-next-line */
         $this->numEventsRead = $this->ffi->new('DWORD');
 
+        /**
+         * @phpstan-ignore-next-line */
+        $this->inputRecordPeek = $this->ffi->new('INPUT_RECORD[1]');
+
+        /**
+         * @phpstan-ignore-next-line */
+        $this->numEventsPeek = $this->ffi->new('DWORD');
         /**
          * @phpstan-ignore-next-line */
         $this->handle = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
@@ -147,8 +164,17 @@ final class WindowsConsole
     {
         /**
          * @phpstan-ignore-next-line */
-        $this->ffi->ReadConsoleInputA($this->handle, $this->inputRecord, $length, FFI::addr($this->numEventsRead));
+        $this->ffi->ReadConsoleInputA($this->handle, $this->inputRecordRead, $length, FFI::addr($this->numEventsRead));
 
-        return $this->inputRecord;
+        return $this->inputRecordRead;
+    }
+
+    public function peekConsoleInput(int $length): FFI\CData
+    {
+        /**
+         * @phpstan-ignore-next-line */
+        $this->ffi->PeekConsoleInputA($this->handle, $this->inputRecordPeek, $length, FFI::addr($this->numEventsPeek));
+
+        return $this->numEventsPeek;
     }
 }

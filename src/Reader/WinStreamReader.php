@@ -87,6 +87,12 @@ final class WinStreamReader implements Reader
             return null;
         }
 
+        $numEvents = $this->windowsConsole->peekConsoleInput(1);
+
+        if ($numEvents->cdata < 1) {
+            return null;
+        }
+
         $inputRecord = $this->windowsConsole->readConsoleInput(1);
 
         // TODO: See what other events need to get handled here
@@ -157,7 +163,7 @@ final class WinStreamReader implements Reader
         $button = 0;
         $modifierState = 0;
 
-        if ($mouseEvent->dwButtonState &self::FROM_LEFT_2ND_BUTTON_PRESSED) {
+        if ($mouseEvent->dwButtonState & self::FROM_LEFT_2ND_BUTTON_PRESSED) {
             $button = 1; // Middle button
         } elseif ($mouseEvent->dwButtonState & self::RIGHTMOST_BUTTON_PRESSED) {
             $button = 2; // Right button
