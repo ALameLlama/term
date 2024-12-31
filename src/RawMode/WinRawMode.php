@@ -22,7 +22,7 @@ final class WinRawMode implements RawMode
 
     public function __construct()
     {
-        $this->windowsConsole = WindowsConsole::new();
+        $this->windowsConsole = WindowsConsole::getInstance();
     }
 
     public static function new(): self

@@ -15,7 +15,7 @@ final class SizeFromWinProvider implements InformationProvider
 
     private function __construct()
     {
-        $this->windowsConsole = WindowsConsole::new();
+        $this->windowsConsole = WindowsConsole::getInstance();
     }
 
     public static function new(): self

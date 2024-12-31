@@ -82,7 +82,7 @@ final class AnsiPainter implements Painter
 
         if ($action instanceof EnableMouseCapture) {
             if (Terminal::isWindows()) {
-                $windowsConsole = new WindowsConsole();
+                $windowsConsole = WindowsConsole::getInstance();
                 // https://learn.microsoft.com/en-us/windows/console/setconsolemode
                 $enableExtendedFlags = 0x0080;
                 $enableWindowInput = 0x0008;

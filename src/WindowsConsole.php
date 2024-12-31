@@ -13,6 +13,8 @@ final class WindowsConsole
     private const STD_INPUT_HANDLE = -10;
     private const STD_OUTPUT_HANDLE = -11;
 
+    private static ?self $instance = null;
+
     /**
      * @method FFI\CData GetStdHandle(int $nStdHandle)
      * @method bool GetConsoleMode(FFI\CData $hConsoleHandle, FFI\CData $lpMode)
@@ -169,6 +171,15 @@ final class WindowsConsole
         /**
          * @phpstan-ignore-next-line */
         $this->numEventsPeek = $this->ffi->new('DWORD');
+    }
+
+    public static function getInstance(): self
+    {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
     }
 
     public static function new(): self
