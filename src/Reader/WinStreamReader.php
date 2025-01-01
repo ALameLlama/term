@@ -55,6 +55,20 @@ final class WinStreamReader implements Reader
     private const VK_F22 = 0x85; // 133
     private const VK_F23 = 0x86; // 134
     private const VK_F24 = 0x87; // 135
+    private const VK_BACKSPACE = 0x08; // 8
+    private const VK_LEFT = 0x25; // 37
+    private const VK_UP = 0x26; // 38
+    private const VK_RIGHT = 0x27; // 39
+    private const VK_DOWN = 0x28; // 40
+    private const VK_PRINT = 0x2A; // 42
+    private const VK_SCROLL = 0x91; // 145
+    private const VK_PAUSE = 0x13; // 19
+    private const VK_INSERT = 0x2D; // 45
+    private const VK_HOME = 0x24; // 36
+    private const VK_PRIOR = 0x21; // 33
+    private const VK_DELETE = 0x2E; // 46
+    private const VK_END = 0x23; // 35
+    private const VK_NEXT = 0x22; // 34
 
     private bool $pendingNull = false;
 
@@ -127,6 +141,20 @@ final class WinStreamReader implements Reader
                         case self::VK_F22: return $this->sendKey("\x1B[34~");
                         case self::VK_F23: return $this->sendKey("\x1B[35~");
                         case self::VK_F24: return $this->sendKey("\x1B[36~");
+                        case self::VK_BACKSPACE: return $this->sendKey("\x7F");
+                        case self::VK_LEFT: return $this->sendKey("\x1B[D");
+                        case self::VK_UP: return $this->sendKey("\x1B[A");
+                        case self::VK_RIGHT: return $this->sendKey("\x1B[C");
+                        case self::VK_DOWN: return $this->sendKey("\x1B[B");
+                        case self::VK_PRINT: return $this->sendKey("\x1B[32~");
+                        case self::VK_SCROLL: return $this->sendKey("\x1B[33~");
+                        case self::VK_PAUSE: return $this->sendKey("\x1B[34~");
+                        case self::VK_INSERT: return $this->sendKey("\x1B[2~");
+                        case self::VK_HOME: return $this->sendKey("\x1B[H");
+                        case self::VK_PRIOR: return $this->sendKey("\x1B[5~");
+                        case self::VK_DELETE: return $this->sendKey("\x1B[3~");
+                        case self::VK_END: return $this->sendKey("\x1B[F");
+                        case self::VK_NEXT: return $this->sendKey("\x1B[6~");
                     }
 
                     // Prevent sending ctrl/alt/shift keys on their own.
