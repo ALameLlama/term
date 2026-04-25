@@ -15,7 +15,7 @@ final class WinRawMode implements RawMode
     private const ENABLE_ECHO_INPUT = 0x0004;
     private const ENABLE_WINDOW_INPUT = 0x0008;
     private const ENABLE_QUICK_EDIT_MODE = 0x0040;
-    private const NOT_RAW_MODE_MASK = self::ENABLE_LINE_INPUT | self::ENABLE_ECHO_INPUT | self::ENABLE_PROCESSED_INPUT | self::ENABLE_QUICK_EDIT_MODE | self::ENABLE_WINDOW_INPUT;
+    private const NOT_RAW_MODE_MASK =  self::ENABLE_PROCESSED_INPUT | self::ENABLE_LINE_INPUT | self::ENABLE_ECHO_INPUT | self::ENABLE_WINDOW_INPUT | self::ENABLE_QUICK_EDIT_MODE;
 
     private ?int $originalSettings = null;
 

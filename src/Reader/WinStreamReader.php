@@ -27,8 +27,8 @@ final class WinStreamReader implements Reader
     private const WHEEL_EXTEND_MASK = ~0x10000;
 
     // https://learn.microsoft.com/en-us/windows/console/key-event-record-str
-    private const ALT_PRESSED = 0x0002;
-    private const CTRL_PRESSED = 0x0008;
+    private const ALT_PRESSED = 0x0001 | 0x0002;
+    private const CTRL_PRESSED = 0x0004 | 0x0008;
     private const SHIFT_PRESSED = 0x0010;
 
     // FN keys - If there are more without ascii representation, we can add them here
@@ -154,6 +154,25 @@ final class WinStreamReader implements Reader
                     if ($keyEvent['unicodeChar'] == 0) {
                         return;
                     }
+
+                    if ($keyEvent['unicodeChar'] === 9) {
+                        $modifierCode = $this->modifierCode($keyEvent['controlKeyState']);
+                        if ($modifierCode !== 1) {
+                            $this->queueKey(sprintf("\x1B[9;%du", $modifierCode), $keyEvent['repeatCount']);
+
+                            return;
+                        }
+                    }
+
+                    // Alt Char modifiers I don't think linux supports this
+                    // if (($keyEvent['controlKeyState'] & self::ALT_PRESSED) !== 0) {
+                    //     $codepoint = $this->modifiedCharCodepoint($keyEvent['unicodeChar'], $keyEvent['controlKeyState']);
+                    //     if ($codepoint !== null) {
+                    //         $this->queueKey(sprintf("\x1B[%d;%du", $codepoint, $this->modifierCode($keyEvent['controlKeyState'])), $keyEvent['repeatCount']);
+                    //
+                    //         return;
+                    //     }
+                    // }
 
                     $key = $this->utf8FromCodeUnit($keyEvent['unicodeChar']);
 
@@ -345,6 +364,44 @@ final class WinStreamReader implements Reader
             $this->pendingInput[] = $key;
         }
     }
+
+    private function modifierCode(int $controlKeyState): int
+    {
+        $modifierCode = 1;
+
+        if (($controlKeyState & self::SHIFT_PRESSED) !== 0) {
+            $modifierCode += 1;
+        }
+        if (($controlKeyState & self::ALT_PRESSED) !== 0) {
+            $modifierCode += 2;
+        }
+        if (($controlKeyState & self::CTRL_PRESSED) !== 0) {
+            $modifierCode += 4;
+        }
+
+        return $modifierCode;
+    }
+
+    // private function modifiedCharCodepoint(int $unicodeChar, int $controlKeyState): ?int
+    // {
+    //     if ($unicodeChar >= 32) {
+    //         return $unicodeChar;
+    //     }
+    //
+    //     if (($controlKeyState & self::CTRL_PRESSED) === 0) {
+    //         return null;
+    //     }
+    //
+    //     if ($unicodeChar >= 1 && $unicodeChar <= 26) {
+    //         return $unicodeChar - 1 + (($controlKeyState & self::SHIFT_PRESSED) !== 0 ? ord('A') : ord('a'));
+    //     }
+    //
+    //     if ($unicodeChar >= 28) {
+    //         return $unicodeChar - ord("\x1C") + ord('4');
+    //     }
+    //
+    //     return null;
+    // }
 
     // ReadConsoleInputW returns UTF-16 code units, so we need to handle surrogate pairs to convert them to UTF-8 characters.
     private function utf8FromCodeUnit(int $codeUnit): ?string

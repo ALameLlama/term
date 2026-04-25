@@ -318,6 +318,23 @@ final class EventParser
         })();
 
         $key = $buffer[array_key_last($buffer)];
+
+        if ($key === 'u') {
+            $codepoint = $this->filterToInt($parts[0]);
+
+            if ($codepoint === 9) {
+                return CodedKeyEvent::new(
+                    ($modifiers & KeyModifiers::SHIFT) !== 0 ? KeyCode::BackTab : KeyCode::Tab,
+                    $modifiers,
+                    $kind,
+                );
+            }
+
+            if ($codepoint !== null) {
+                return CharKeyEvent::new(mb_chr($codepoint, 'UTF-8'), $modifiers);
+            }
+        }
+
         $codedKey = match ($key) {
             'A' => KeyCode::Up,
             'B' => KeyCode::Down,
