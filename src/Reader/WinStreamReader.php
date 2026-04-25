@@ -9,9 +9,12 @@ use PhpTui\Term\WindowsConsole;
 
 final class WinStreamReader implements Reader
 {
+    private const WINDOWS_RESIZE_SENTINEL = "\x1B]php-tui-resize\x07";
+
     // https://learn.microsoft.com/en-us/windows/console/input-record-str
     private const KEY_EVENT = 0x0001;
     private const MOUSE_EVENT = 0x0002;
+    private const WINDOW_BUFFER_SIZE_EVENT = 0x0004;
     private const FOCUS_EVENT = 0x0010;
 
     // https://learn.microsoft.com/en-us/windows/console/mouse-event-record-str
@@ -124,7 +127,7 @@ final class WinStreamReader implements Reader
     }
 
     /**
-     * @param array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, focusEvent?: array{setFocus: bool}} $input
+     * @param array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, windowBufferSizeEvent?: array{size: array{x: int, y: int}}, focusEvent?: array{setFocus: bool}} $input
      */
     private function queueInput(array $input): void
     {
@@ -174,6 +177,11 @@ final class WinStreamReader implements Reader
                 if ($mouseInput !== null) {
                     $this->pendingInput[] = $mouseInput;
                 }
+
+                break;
+            case self::WINDOW_BUFFER_SIZE_EVENT:
+                $this->pendingNull = true;
+                $this->pendingInput[] = self::WINDOWS_RESIZE_SENTINEL;
 
                 break;
             case self::FOCUS_EVENT:
@@ -362,4 +370,5 @@ final class WinStreamReader implements Reader
 
         return mb_chr($codeUnit, 'UTF-8');
     }
+
 }

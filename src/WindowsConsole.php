@@ -108,7 +108,7 @@ final class WindowsConsole
     }
 
     /**
-     * @return list<array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, focusEvent?: array{setFocus: bool}}>
+     * @return list<array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, windowBufferSizeEvent?: array{size: array{x: int, y: int}}, focusEvent?: array{setFocus: bool}}>
      */
     public function readConsoleInputRecords(int $length): array
     {
@@ -139,7 +139,7 @@ final class WindowsConsole
     }
 
     /**
-     * @return array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, focusEvent?: array{setFocus: bool}}
+     * @return array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, windowBufferSizeEvent?: array{size: array{x: int, y: int}}, focusEvent?: array{setFocus: bool}}
      */
     private function inputRecordToArray(FFI\CData $record): array
     {
@@ -168,6 +168,15 @@ final class WindowsConsole
                     'buttonState' => (int) $mouseEvent->dwButtonState,
                     'controlKeyState' => (int) $mouseEvent->dwControlKeyState,
                     'eventFlags' => (int) $mouseEvent->dwEventFlags,
+                ];
+                break;
+            case 0x0004:
+                $windowBufferSizeEvent = $record->Event->WindowBufferSizeEvent;
+                $input['windowBufferSizeEvent'] = [
+                    'size' => [
+                        'x' => (int) $windowBufferSizeEvent->dwSize->X,
+                        'y' => (int) $windowBufferSizeEvent->dwSize->Y,
+                    ],
                 ];
                 break;
             case 0x0010:
@@ -256,6 +265,11 @@ final class WindowsConsole
             typedef struct _FOCUS_EVENT_RECORD {
                 BOOL bSetFocus;
             } FOCUS_EVENT_RECORD;
+
+            // https://learn.microsoft.com/en-us/windows/console/window-buffer-size-record-str
+            typedef struct _WINDOW_BUFFER_SIZE_RECORD {
+                COORD dwSize;
+            } WINDOW_BUFFER_SIZE_RECORD;
             
             // https://learn.microsoft.com/en-us/windows/console/input-record-str
             typedef struct _INPUT_RECORD {
@@ -263,6 +277,7 @@ final class WindowsConsole
                 union {
                     KEY_EVENT_RECORD KeyEvent;
                     MOUSE_EVENT_RECORD MouseEvent;
+                    WINDOW_BUFFER_SIZE_RECORD WindowBufferSizeEvent;
                     FOCUS_EVENT_RECORD FocusEvent;
                 } Event;
             } INPUT_RECORD;

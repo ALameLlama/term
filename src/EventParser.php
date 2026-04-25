@@ -10,12 +10,15 @@ use PhpTui\Term\Event\CursorPositionEvent;
 use PhpTui\Term\Event\FocusEvent;
 use PhpTui\Term\Event\FunctionKeyEvent;
 use PhpTui\Term\Event\MouseEvent;
+use PhpTui\Term\Event\TerminalResizedEvent;
 
 /**
  * Parses input events
  */
 final class EventParser
 {
+    private const WINDOWS_RESIZE_SENTINEL = "\x1B]php-tui-resize\x07";
+
     /**
      * @var string[]
      */
@@ -101,6 +104,7 @@ final class EventParser
 
         return match ($buffer[1]) {
             '[' => $this->parseCsi($buffer),
+            ']' => $this->parseOsc($buffer),
             "\x1B" => CodedKeyEvent::new(KeyCode::Esc),
             'O' => (function () use ($buffer): null|FunctionKeyEvent|CodedKeyEvent {
                 if (count($buffer) === 2) {
@@ -123,6 +127,24 @@ final class EventParser
             })(),
             default => $this->parseEvent(array_slice($buffer, 1), $inputAvailable),
         };
+    }
+
+    /**
+     * @param string[] $buffer
+     */
+    private function parseOsc(array $buffer): ?Event
+    {
+        $sequence = implode('', $buffer);
+
+        if ($sequence === self::WINDOWS_RESIZE_SENTINEL) {
+            return new TerminalResizedEvent();
+        }
+
+        if (str_starts_with(self::WINDOWS_RESIZE_SENTINEL, $sequence)) {
+            return null;
+        }
+
+        throw ParseError::couldNotParseOffset($buffer, 1);
     }
 
     /**
