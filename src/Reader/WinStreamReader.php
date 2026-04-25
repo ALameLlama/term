@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace PhpTui\Term\Reader;
 
-use FFI\CData;
 use PhpTui\Term\Reader;
 use PhpTui\Term\WindowsConsole;
 
@@ -72,24 +71,30 @@ final class WinStreamReader implements Reader
 
     private bool $pendingNull = false;
 
+    /** @var list<string> */
+    private array $pendingInput = [];
+
+    private ?int $pendingHighSurrogate = null;
+
     private int $lastPressedButton = 0;
 
     private int $lastModifierState = 0;
 
-    private WindowsConsole $windowsConsole;
-
-    private function __construct()
+    private function __construct(private readonly WindowsConsole $windowsConsole)
     {
-        $this->windowsConsole = WindowsConsole::getInstance();
     }
 
-    public static function new(): self
+    public static function new(?WindowsConsole $windowsConsole = null): self
     {
-        return new self();
+        return new self($windowsConsole ?? WindowsConsole::getInstance());
     }
 
     public function read(): ?string
     {
+        if ($this->pendingInput !== []) {
+            return array_shift($this->pendingInput);
+        }
+
         // We only parse the stream when we return a null.
         // With Key events, we need to set a flag to return null on the next loop to mimic unix behavior.
         // With Mouse events, we need to return null on the next loop,
@@ -101,115 +106,125 @@ final class WinStreamReader implements Reader
             return null;
         }
 
-        $numEvents = $this->windowsConsole->peekConsoleInput(1);
+        $numEvents = $this->windowsConsole->getNumberOfConsoleInputEvents();
 
-        if ($numEvents->cdata < 1) {
+        if ($numEvents < 1) {
             return null;
         }
 
-        $inputRecord = $this->windowsConsole->readConsoleInput(1);
+        foreach ($this->windowsConsole->readConsoleInputRecords(min($numEvents, WindowsConsole::INPUT_RECORD_BATCH_SIZE)) as $input) {
+            $this->queueInput($input);
+        }
 
-        // TODO: See what other events need to get handled here
-        // https://github.com/php-tui/term/blob/main/src/EventParser.php#L73
-        switch ($inputRecord[0]->EventType) {
-            case self::KEY_EVENT:
-                $keyEvent = $inputRecord[0]->Event->KeyEvent;
-
-                if ($keyEvent->bKeyDown) {
-                    switch ($keyEvent->wVirtualKeyCode) {
-                        case self::VK_F1:  return $this->sendKey("\x1B[11~");
-                        case self::VK_F2:  return $this->sendKey("\x1B[12~");
-                        case self::VK_F3:  return $this->sendKey("\x1B[13~");
-                        case self::VK_F4:  return $this->sendKey("\x1B[14~");
-                        case self::VK_F5:  return $this->sendKey("\x1B[15~");
-                        case self::VK_F6:  return $this->sendKey("\x1B[17~");
-                        case self::VK_F7:  return $this->sendKey("\x1B[18~");
-                        case self::VK_F8:  return $this->sendKey("\x1B[19~");
-                        case self::VK_F9:  return $this->sendKey("\x1B[20~");
-                        case self::VK_F10: return $this->sendKey("\x1B[21~");
-                        case self::VK_F11: return $this->sendKey("\x1B[23~");
-                        case self::VK_F12: return $this->sendKey("\x1B[24~");
-                        case self::VK_F13: return $this->sendKey("\x1B[25~");
-                        case self::VK_F14: return $this->sendKey("\x1B[26~");
-                        case self::VK_F15: return $this->sendKey("\x1B[27~");
-                        case self::VK_F16: return $this->sendKey("\x1B[28~");
-                        case self::VK_F17: return $this->sendKey("\x1B[29~");
-                        case self::VK_F18: return $this->sendKey("\x1B[30~");
-                        case self::VK_F19: return $this->sendKey("\x1B[31~");
-                        case self::VK_F20: return $this->sendKey("\x1B[32~");
-                        case self::VK_F21: return $this->sendKey("\x1B[33~");
-                        case self::VK_F22: return $this->sendKey("\x1B[34~");
-                        case self::VK_F23: return $this->sendKey("\x1B[35~");
-                        case self::VK_F24: return $this->sendKey("\x1B[36~");
-                        case self::VK_BACKSPACE: return $this->sendKey("\x7F");
-                        case self::VK_LEFT: return $this->sendKey("\x1B[D");
-                        case self::VK_UP: return $this->sendKey("\x1B[A");
-                        case self::VK_RIGHT: return $this->sendKey("\x1B[C");
-                        case self::VK_DOWN: return $this->sendKey("\x1B[B");
-                        case self::VK_PRINT: return $this->sendKey("\x1B[32~");
-                        case self::VK_SCROLL: return $this->sendKey("\x1B[33~");
-                        case self::VK_PAUSE: return $this->sendKey("\x1B[34~");
-                        case self::VK_INSERT: return $this->sendKey("\x1B[2~");
-                        case self::VK_HOME: return $this->sendKey("\x1B[H");
-                        case self::VK_PRIOR: return $this->sendKey("\x1B[5~");
-                        case self::VK_DELETE: return $this->sendKey("\x1B[3~");
-                        case self::VK_END: return $this->sendKey("\x1B[F");
-                        case self::VK_NEXT: return $this->sendKey("\x1B[6~");
-                    }
-
-                    // Prevent sending ctrl/alt/shift keys on their own.
-                    if ($keyEvent->uChar->UnicodeChar == 0) {
-                        break;
-                    }
-
-                    return $this->sendKey($keyEvent->uChar->AsciiChar);
-                }
-                break;
-
-            case self::MOUSE_EVENT:
-                return $this->calculateSGR($inputRecord[0]->Event->MouseEvent);
-            case self::FOCUS_EVENT:
-                $keyEvent = $inputRecord[0]->Event->FocusEvent;
-
-                $this->pendingNull = true;
-
-                return $keyEvent->bSetFocus ? "\x1B[I" : "\x1B[O";
-            default:
-                return null;
+        if ($this->pendingInput !== []) {
+            return array_shift($this->pendingInput);
         }
 
         return null;
     }
 
-    private function calculateSGR(CData $mouseEvent): ?string
+    /**
+     * @param array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, focusEvent?: array{setFocus: bool}} $input
+     */
+    private function queueInput(array $input): void
     {
-        $x = $mouseEvent->dwMousePosition->X + 1;
-        $y = $mouseEvent->dwMousePosition->Y + 1;
+        // TODO: See what other events need to get handled here
+        // https://github.com/php-tui/term/blob/main/src/EventParser.php#L73
+        switch ($input['eventType']) {
+            case self::KEY_EVENT:
+                $keyEvent = $input['keyEvent'] ?? null;
+
+                if ($keyEvent === null) {
+                    return;
+                }
+
+                if ($keyEvent['keyDown']) {
+                    $mappedKey = $this->mappedKey($keyEvent['virtualKeyCode']);
+
+                    if ($mappedKey !== null) {
+                        $this->queueKey($mappedKey, $keyEvent['repeatCount']);
+
+                        return;
+                    }
+
+                    // Prevent sending ctrl/alt/shift keys on their own.
+                    if ($keyEvent['unicodeChar'] == 0) {
+                        return;
+                    }
+
+                    $key = $this->utf8FromCodeUnit($keyEvent['unicodeChar']);
+
+                    if ($key === null) {
+                        return;
+                    }
+
+                    $this->queueKey($key, $keyEvent['repeatCount']);
+                }
+                break;
+
+            case self::MOUSE_EVENT:
+                $mouseEvent = $input['mouseEvent'] ?? null;
+
+                if ($mouseEvent === null) {
+                    return;
+                }
+
+                $mouseInput = $this->calculateSGR($mouseEvent);
+
+                if ($mouseInput !== null) {
+                    $this->pendingInput[] = $mouseInput;
+                }
+
+                break;
+            case self::FOCUS_EVENT:
+                $focusEvent = $input['focusEvent'] ?? null;
+
+                if ($focusEvent === null) {
+                    return;
+                }
+
+                $this->pendingNull = true;
+                $this->pendingInput[] = $focusEvent['setFocus'] ? "\x1B[I" : "\x1B[O";
+
+                break;
+            default:
+                break;
+        }
+    }
+
+    /**
+     * @param array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int} $mouseEvent
+     */
+    private function calculateSGR(array $mouseEvent): ?string
+    {
+        $x = $mouseEvent['mousePosition']['x'] + 1;
+        $y = $mouseEvent['mousePosition']['y'] + 1;
 
         $this->pendingNull = true;
 
         $button = 0;
         $modifierState = 0;
 
-        if ($mouseEvent->dwButtonState & self::FROM_LEFT_2ND_BUTTON_PRESSED) {
+        if ($mouseEvent['buttonState'] & self::FROM_LEFT_2ND_BUTTON_PRESSED) {
             $button = 1; // Middle button
-        } elseif ($mouseEvent->dwButtonState & self::RIGHTMOST_BUTTON_PRESSED) {
+        } elseif ($mouseEvent['buttonState'] & self::RIGHTMOST_BUTTON_PRESSED) {
             $button = 2; // Right button
         }
 
-        if ($mouseEvent->dwControlKeyState & self::SHIFT_PRESSED) {
+        if ($mouseEvent['controlKeyState'] & self::SHIFT_PRESSED) {
             $modifierState |= 4;
         }
-        if ($mouseEvent->dwControlKeyState & self::ALT_PRESSED) {
+        if ($mouseEvent['controlKeyState'] & self::ALT_PRESSED) {
             $modifierState |= 8;
         }
-        if ($mouseEvent->dwControlKeyState & self::CTRL_PRESSED) {
+        if ($mouseEvent['controlKeyState'] & self::CTRL_PRESSED) {
             $modifierState |= 16;
         }
 
         // Handle different event types
-        if ($mouseEvent->dwEventFlags == self::MOUSE_MOVED) {
-            $buttonState = $mouseEvent->dwButtonState;
+
+        if ($mouseEvent['eventFlags'] === self::MOUSE_MOVED) {
+            $buttonState = $mouseEvent['buttonState'];
             if (
                 $buttonState &
                     (
@@ -225,6 +240,7 @@ final class WinStreamReader implements Reader
                 } elseif ($buttonState & self::RIGHTMOST_BUTTON_PRESSED) {
                     $button = 34; // Right button drag
                 }
+
                 // Add the stored modifier state from when the drag started
                 $button += $this->lastModifierState;
 
@@ -233,39 +249,117 @@ final class WinStreamReader implements Reader
                 // Movement without buttons
                 return sprintf("\x1B[<%d;%d;%dm", 35, $x, $y);
             }
-        } elseif ($mouseEvent->dwEventFlags == self::MOUSE_WHEELED) {
-            $wheelDelta = ($mouseEvent->dwButtonState >> 16);
+        } elseif ($mouseEvent['eventFlags'] === self::MOUSE_WHEELED) {
+            $wheelDelta = ($mouseEvent['buttonState'] >> 16);
             if ($wheelDelta & self::WHEEL_MASK) {
                 $wheelDelta |= self::WHEEL_EXTEND_MASK;
             }
+
             if ($wheelDelta < 0) {
                 // Wheel up
                 return sprintf("\x1B[<%d;%d;%dM", 65 + $modifierState, $x, $y);
-            } else {
-                // Wheel down
-                return sprintf("\x1B[<%d;%d;%dM", 64 + $modifierState, $x, $y);
             }
-        } elseif ($mouseEvent->dwEventFlags == 0) {
+
+            // Wheel down
+            return sprintf("\x1B[<%d;%d;%dM", 64 + $modifierState, $x, $y);
+        } elseif ($mouseEvent['eventFlags'] === 0) {
             $button += $modifierState;
 
-            if ($mouseEvent->dwButtonState == 0) {
+            if ($mouseEvent['buttonState'] === 0) {
                 // Button release - use lowercase 'm' with the last pressed button and modifiers
                 return sprintf("\x1B[<%d;%d;%dm", $this->lastPressedButton, $x, $y);
-            } else {
-                // Button press - store both button and modifier state
-                $this->lastPressedButton = $button;
-                $this->lastModifierState = $modifierState;
-                return sprintf("\x1B[<%d;%d;%dM", $button, $x, $y);
             }
+
+            // Button press - store both button and modifier state
+            $this->lastPressedButton = $button;
+            $this->lastModifierState = $modifierState;
+
+            return sprintf("\x1B[<%d;%d;%dM", $button, $x, $y);
         }
 
         return null;
     }
 
-    private function sendKey(string $key): string
+    private function mappedKey(int $virtualKeyCode): ?string
     {
+        return match ($virtualKeyCode) {
+            self::VK_F1 => "\x1B[11~",
+            self::VK_F2 => "\x1B[12~",
+            self::VK_F3 => "\x1B[13~",
+            self::VK_F4 => "\x1B[14~",
+            self::VK_F5 => "\x1B[15~",
+            self::VK_F6 => "\x1B[17~",
+            self::VK_F7 => "\x1B[18~",
+            self::VK_F8 => "\x1B[19~",
+            self::VK_F9 => "\x1B[20~",
+            self::VK_F10 => "\x1B[21~",
+            self::VK_F11 => "\x1B[23~",
+            self::VK_F12 => "\x1B[24~",
+            self::VK_F13 => "\x1B[25~",
+            self::VK_F14 => "\x1B[26~",
+            self::VK_F15 => "\x1B[27~",
+            self::VK_F16 => "\x1B[28~",
+            self::VK_F17 => "\x1B[29~",
+            self::VK_F18 => "\x1B[30~",
+            self::VK_F19 => "\x1B[31~",
+            self::VK_F20 => "\x1B[32~",
+            self::VK_F21 => "\x1B[33~",
+            self::VK_F22 => "\x1B[34~",
+            self::VK_F23 => "\x1B[35~",
+            self::VK_F24 => "\x1B[36~",
+            self::VK_BACKSPACE => "\x7F",
+            self::VK_LEFT => "\x1B[D",
+            self::VK_UP => "\x1B[A",
+            self::VK_RIGHT => "\x1B[C",
+            self::VK_DOWN => "\x1B[B",
+            self::VK_PRINT => "\x1B[32~",
+            self::VK_SCROLL => "\x1B[33~",
+            self::VK_PAUSE => "\x1B[34~",
+            self::VK_INSERT => "\x1B[2~",
+            self::VK_HOME => "\x1B[H",
+            self::VK_PRIOR => "\x1B[5~",
+            self::VK_DELETE => "\x1B[3~",
+            self::VK_END => "\x1B[F",
+            self::VK_NEXT => "\x1B[6~",
+            default => null,
+        };
+    }
+
+    private function queueKey(string $key, int $repeatCount = 1): void
+    {
+        if ($repeatCount < 1) {
+            return;
+        }
+
         $this->pendingNull = true;
 
-        return $key;
+        for ($i = 0; $i < $repeatCount; $i++) {
+            $this->pendingInput[] = $key;
+        }
+    }
+
+    // ReadConsoleInputW returns UTF-16 code units, so we need to handle surrogate pairs to convert them to UTF-8 characters.
+    private function utf8FromCodeUnit(int $codeUnit): ?string
+    {
+        if ($codeUnit >= 0xD800 && $codeUnit <= 0xDBFF) {
+            $this->pendingHighSurrogate = $codeUnit;
+
+            return null;
+        }
+
+        if ($codeUnit >= 0xDC00 && $codeUnit <= 0xDFFF) {
+            if ($this->pendingHighSurrogate === null) {
+                return null;
+            }
+
+            $highSurrogate = $this->pendingHighSurrogate;
+            $this->pendingHighSurrogate = null;
+
+            return mb_chr(0x10000 + (($highSurrogate - 0xD800) << 10) + ($codeUnit - 0xDC00), 'UTF-8');
+        }
+
+        $this->pendingHighSurrogate = null;
+
+        return mb_chr($codeUnit, 'UTF-8');
     }
 }

@@ -18,16 +18,13 @@ final class WinRawMode implements RawMode
 
     private ?int $originalSettings = null;
 
-    private WindowsConsole $windowsConsole;
-
-    public function __construct()
+    private function __construct(private readonly WindowsConsole $windowsConsole)
     {
-        $this->windowsConsole = WindowsConsole::getInstance();
     }
 
-    public static function new(): self
+    public static function new(?WindowsConsole $windowsConsole = null): self
     {
-        return new self();
+        return new self($windowsConsole ?? WindowsConsole::getInstance());
     }
 
     // https://github.com/crossterm-rs/crossterm/blob/master/src/terminal/sys/windows.rs#L31
@@ -41,7 +38,7 @@ final class WinRawMode implements RawMode
 
         $this->originalSettings = $mode;
 
-        $newMode = $mode &= ~self::NOT_RAW_MODE_MASK;
+        $newMode = $mode & (~self::NOT_RAW_MODE_MASK);
 
         $this->windowsConsole->setConsoleMode($newMode);
     }

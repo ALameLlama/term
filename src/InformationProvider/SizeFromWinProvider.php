@@ -11,16 +11,13 @@ use PhpTui\Term\WindowsConsole;
 
 final class SizeFromWinProvider implements InformationProvider
 {
-    private WindowsConsole $windowsConsole;
-
-    private function __construct()
+    private function __construct(private readonly WindowsConsole $windowsConsole)
     {
-        $this->windowsConsole = WindowsConsole::getInstance();
     }
 
-    public static function new(): self
+    public static function new(?WindowsConsole $windowsConsole = null): self
     {
-        return new self();
+        return new self($windowsConsole ?? WindowsConsole::getInstance());
     }
 
     public function for(string $classFqn): ?TerminalInformation

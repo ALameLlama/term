@@ -9,22 +9,15 @@ use RuntimeException;
 
 final class WindowsConsole
 {
+    public const INPUT_RECORD_BATCH_SIZE = 64;
+
     // https://learn.microsoft.com/en-us/windows/console/getstdhandle
     private const STD_INPUT_HANDLE = -10;
     private const STD_OUTPUT_HANDLE = -11;
 
     private static ?self $instance = null;
 
-    /**
-     * @method FFI\CData GetStdHandle(int $nStdHandle)
-     * @method bool GetConsoleMode(FFI\CData $hConsoleHandle, FFI\CData $lpMode)
-     * @method bool SetConsoleMode(FFI\CData $hConsoleHandle, int $dwMode)
-     * @method bool GetConsoleScreenBufferInfo(FFI\CData $hConsoleOutput, FFI\CData $lpConsoleScreenBufferInfo)
-     * @method bool ReadConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
-     * @method bool ReadConsoleInputW(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
-     * @method bool PeekConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
-     * @method bool PeekConsoleInputW(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
-     */
+    /** @var FFI&Kernel32FFI */
     private FFI $ffi;
 
     private FFI\CData $handleIn;
@@ -39,11 +32,189 @@ final class WindowsConsole
 
     private FFI\CData $numEventsRead;
 
+    private FFI\CData $numEventsAvailable;
+
     private FFI\CData $inputRecordPeek;
 
     private FFI\CData $numEventsPeek;
 
     public function __construct()
+    {
+        $this->ffi = self::createKernel32();
+
+        $this->handleIn = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
+
+        if (FFI::isNull($this->handleIn)) {
+            throw new RuntimeException('Failed to get console handle');
+        }
+
+        $this->handleOut = $this->ffi->GetStdHandle(self::STD_OUTPUT_HANDLE);
+
+        if (FFI::isNull($this->handleOut)) {
+            throw new RuntimeException('Failed to get console handle');
+        }
+
+        $this->consoleBufferInfo = $this->ffi->new('CONSOLE_SCREEN_BUFFER_INFO');
+        $this->mode = $this->ffi->new('DWORD');
+        $this->inputRecordRead = $this->ffi->new('INPUT_RECORD[' . self::INPUT_RECORD_BATCH_SIZE . ']');
+        $this->numEventsRead = $this->ffi->new('DWORD');
+        $this->numEventsAvailable = $this->ffi->new('DWORD');
+        $this->inputRecordPeek = $this->ffi->new('INPUT_RECORD[1]');
+        $this->numEventsPeek = $this->ffi->new('DWORD');
+    }
+
+    public static function getInstance(): self
+    {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
+    }
+
+    public static function new(): self
+    {
+        return new self();
+    }
+
+    public function setConsoleMode(int $mode): void
+    {
+        if (! $this->ffi->SetConsoleMode($this->handleIn, $mode)) {
+            throw new RuntimeException('Failed to set console to raw mode');
+        }
+    }
+
+    public function getConsoleMode(): int
+    {
+        if (! $this->ffi->GetConsoleMode($this->handleIn, FFI::addr($this->mode))) {
+            throw new RuntimeException('Failed to get console mode');
+        }
+
+        /** @var int $mode */
+        $mode = $this->mode->cdata;
+
+        return $mode;
+    }
+
+    public function readConsoleInput(int $length): FFI\CData
+    {
+        $length = max(1, min($length, self::INPUT_RECORD_BATCH_SIZE));
+
+        if (! $this->ffi->ReadConsoleInputW($this->handleIn, $this->inputRecordRead, $length, FFI::addr($this->numEventsRead))) {
+            throw new RuntimeException('Failed to read console input');
+        }
+
+        return $this->inputRecordRead;
+    }
+
+    /**
+     * @return list<array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, focusEvent?: array{setFocus: bool}}>
+     */
+    public function readConsoleInputRecords(int $length): array
+    {
+        $inputRecords = $this->readConsoleInput($length);
+
+        /** @var int $numEventsRead */
+        $numEventsRead = $this->numEventsRead->cdata;
+
+        $input = [];
+
+        for ($i = 0; $i < $numEventsRead; $i++) {
+            $input[] = $this->inputRecordToArray($inputRecords[$i]);
+        }
+
+        return $input;
+    }
+
+    public function getNumberOfConsoleInputEvents(): int
+    {
+        if (! $this->ffi->GetNumberOfConsoleInputEvents($this->handleIn, FFI::addr($this->numEventsAvailable))) {
+            throw new RuntimeException('Failed to get number of console input events');
+        }
+
+        /** @var int $numEventsAvailable */
+        $numEventsAvailable = $this->numEventsAvailable->cdata;
+
+        return $numEventsAvailable;
+    }
+
+    /**
+     * @return array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, focusEvent?: array{setFocus: bool}}
+     */
+    private function inputRecordToArray(FFI\CData $record): array
+    {
+        $input = [
+            'eventType' => (int) $record->EventType,
+        ];
+
+        switch ($input['eventType']) {
+            case 0x0001:
+                $keyEvent = $record->Event->KeyEvent;
+                $input['keyEvent'] = [
+                    'keyDown' => (bool) $keyEvent->bKeyDown,
+                    'repeatCount' => (int) $keyEvent->wRepeatCount,
+                    'virtualKeyCode' => (int) $keyEvent->wVirtualKeyCode,
+                    'unicodeChar' => (int) $keyEvent->uChar->UnicodeChar,
+                    'controlKeyState' => (int) $keyEvent->dwControlKeyState,
+                ];
+                break;
+            case 0x0002:
+                $mouseEvent = $record->Event->MouseEvent;
+                $input['mouseEvent'] = [
+                    'mousePosition' => [
+                        'x' => (int) $mouseEvent->dwMousePosition->X,
+                        'y' => (int) $mouseEvent->dwMousePosition->Y,
+                    ],
+                    'buttonState' => (int) $mouseEvent->dwButtonState,
+                    'controlKeyState' => (int) $mouseEvent->dwControlKeyState,
+                    'eventFlags' => (int) $mouseEvent->dwEventFlags,
+                ];
+                break;
+            case 0x0010:
+                $focusEvent = $record->Event->FocusEvent;
+                $input['focusEvent'] = [
+                    'setFocus' => (bool) $focusEvent->bSetFocus,
+                ];
+                break;
+        }
+
+        return $input;
+    }
+
+    public function peekConsoleInput(int $length): FFI\CData
+    {
+        $this->ffi->PeekConsoleInputW($this->handleIn, $this->inputRecordPeek, $length, FFI::addr($this->numEventsPeek));
+
+        return $this->numEventsPeek;
+    }
+
+    /**
+    * @return array{screenBufferSize: array{x: int, y: int}, cursorPosition: array{x: int, y: int}, windowSize: array{width: int, height: int}, maximumWindowSize: array{x: int, y: int}, attributes: int}
+    */
+    public function getConsoleScreenBufferInfo(): array
+    {
+        if (! $this->ffi->GetConsoleScreenBufferInfo($this->handleOut, FFI::addr($this->consoleBufferInfo))) {
+            throw new RuntimeException('Failed to get console screen buffer info');
+        }
+
+        $info = $this->consoleBufferInfo;
+
+        return [
+            'screenBufferSize' => ['x' => $info->dwSize->X, 'y' => $info->dwSize->Y],
+            'cursorPosition' => ['x' => $info->dwCursorPosition->X, 'y' => $info->dwCursorPosition->Y],
+            'windowSize' => [
+                'width' => $info->srWindow->Right - $info->srWindow->Left + 1,
+                'height' => $info->srWindow->Bottom - $info->srWindow->Top + 1,
+            ],
+            'maximumWindowSize' => ['x' => $info->dwMaximumWindowSize->X, 'y' => $info->dwMaximumWindowSize->Y],
+            'attributes' => $info->wAttributes,
+        ];
+    }
+
+    /**
+     * @return FFI&Kernel32FFI
+     */
+    private static function createKernel32(): FFI
     {
         $header = <<<CLang
             // Types
@@ -121,6 +292,8 @@ final class WindowsConsole
             BOOL SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
             // https://learn.microsoft.com/en-us/windows/console/getconsolescreenbufferinfo
             BOOL GetConsoleScreenBufferInfo(HANDLE hConsoleOutput, CONSOLE_SCREEN_BUFFER_INFO* lpConsoleScreenBufferInfo);
+            // https://learn.microsoft.com/en-us/windows/console/getnumberofconsoleinputevents
+            BOOL GetNumberOfConsoleInputEvents(HANDLE hConsoleInput, DWORD* lpcNumberOfEvents);
             // https://learn.microsoft.com/en-us/windows/console/readconsoleinput
             // ReadConsoleInputW (Unicode) and ReadConsoleInputA (ANSI)
             BOOL ReadConsoleInputW(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
@@ -130,125 +303,9 @@ final class WindowsConsole
             BOOL PeekConsoleInputA(HANDLE hConsoleInput, INPUT_RECORD* lpBuffer, DWORD nLength, DWORD* lpNumberOfEventsRead);
             CLang;
 
-        $this->ffi = FFI::cdef($header, 'kernel32.dll');
+        /** @var FFI&Kernel32FFI $ffi */
+        $ffi = FFI::cdef($header, 'kernel32.dll');
 
-        /**
-         * @phpstan-ignore-next-line */
-        $this->handleIn = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
-
-        if (FFI::isNull($this->handleIn)) {
-            throw new RuntimeException('Failed to get console handle');
-        }
-
-        /**
-         * @phpstan-ignore-next-line */
-        $this->handleOut = $this->ffi->GetStdHandle(self::STD_OUTPUT_HANDLE);
-
-        if (FFI::isNull($this->handleOut)) {
-            throw new RuntimeException('Failed to get console handle');
-        }
-
-        /**
-         * @phpstan-ignore-next-line */
-        $this->consoleBufferInfo = $this->ffi->new('CONSOLE_SCREEN_BUFFER_INFO');
-
-        /**
-         * @phpstan-ignore-next-line */
-        $this->mode = $this->ffi->new('DWORD');
-
-        /**
-         * @phpstan-ignore-next-line */
-        $this->inputRecordRead = $this->ffi->new('INPUT_RECORD[1]');
-
-        /**
-         * @phpstan-ignore-next-line */
-        $this->numEventsRead = $this->ffi->new('DWORD');
-
-        /**
-         * @phpstan-ignore-next-line */
-        $this->inputRecordPeek = $this->ffi->new('INPUT_RECORD[1]');
-
-        /**
-         * @phpstan-ignore-next-line */
-        $this->numEventsPeek = $this->ffi->new('DWORD');
-    }
-
-    public static function getInstance(): self
-    {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-
-        return self::$instance;
-    }
-
-    public static function new(): self
-    {
-        return new self();
-    }
-
-    public function setConsoleMode(int $mode): void
-    {
-        /**
-         * @phpstan-ignore-next-line */
-        if (! $this->ffi->SetConsoleMode($this->handleIn, $mode)) {
-            throw new RuntimeException('Failed to set console to raw mode');
-        }
-    }
-
-    public function getConsoleMode(): int
-    {
-        /**
-         * @phpstan-ignore-next-line */
-        if (! $this->ffi->GetConsoleMode($this->handleIn, FFI::addr($this->mode))) {
-            throw new RuntimeException('Failed to get console mode');
-        }
-
-        /**
-         * @phpstan-ignore-next-line */
-        return $this->mode->cdata;
-    }
-
-    public function readConsoleInput(int $length): FFI\CData
-    {
-        /**
-         * @phpstan-ignore-next-line */
-        $this->ffi->ReadConsoleInputA($this->handleIn, $this->inputRecordRead, $length, FFI::addr($this->numEventsRead));
-
-        return $this->inputRecordRead;
-    }
-
-    public function peekConsoleInput(int $length): FFI\CData
-    {
-        /**
-         * @phpstan-ignore-next-line */
-        $this->ffi->PeekConsoleInputA($this->handleIn, $this->inputRecordPeek, $length, FFI::addr($this->numEventsPeek));
-
-        return $this->numEventsPeek;
-    }
-
-    /**
-    * @return array{screenBufferSize: array{x: int, y: int}, cursorPosition: array{x: int, y: int}, windowSize: array{width: int, height: int}, maximumWindowSize: array{x: int, y: int}, attributes: int}
-    */
-    public function getConsoleScreenBufferInfo(): array
-    {
-        /**
-         * @phpstan-ignore-next-line */
-        if (! $this->ffi->GetConsoleScreenBufferInfo($this->handleOut, FFI::addr($this->consoleBufferInfo))) {
-            throw new RuntimeException('Failed to get console screen buffer info');
-        }
-
-        $info = $this->consoleBufferInfo;
-
-        return [
-            'screenBufferSize' => ['x' => $info->dwSize->X, 'y' => $info->dwSize->Y],
-            'cursorPosition' => ['x' => $info->dwCursorPosition->X, 'y' => $info->dwCursorPosition->Y],
-            'windowSize' => [
-                'width' => $info->srWindow->Right - $info->srWindow->Left + 1,
-                'height' => $info->srWindow->Bottom - $info->srWindow->Top + 1,
-            ],
-            'maximumWindowSize' => ['x' => $info->dwMaximumWindowSize->X, 'y' => $info->dwMaximumWindowSize->Y],
-            'attributes' => $info->wAttributes,
-        ];
+        return $ffi;
     }
 }
