@@ -57,27 +57,28 @@ final class AnsiPainter implements Painter
 
     public function paint(array $actions): void
     {
+        $buffer = '';
+
         foreach ($actions as $action) {
-            $this->drawCommand($action);
+            $buffer .= $this->drawCommand($action);
+        }
+
+        if ($buffer !== '') {
+            $this->writer->write($buffer);
         }
     }
 
-    private function drawCommand(Action $action): void
+    private function drawCommand(Action $action): string
     {
         if ($action instanceof PrintString) {
-            $this->writer->write($action->string);
-
-            return;
+            return $action->string;
         }
         if ($action instanceof SetForegroundColor && $action->color === Colors::Reset) {
-            $this->writer->write($this->csi('39m'));
-
-            return;
+            return $this->csi('39m');
         }
-        if ($action instanceof SetBackgroundColor && $action->color === Colors::Reset) {
-            $this->writer->write($this->csi('49m'));
 
-            return;
+        if ($action instanceof SetBackgroundColor && $action->color === Colors::Reset) {
+            return $this->csi('49m');
         }
 
         if ($action instanceof EnableMouseCapture) {
@@ -95,8 +96,10 @@ final class AnsiPainter implements Painter
                     $mode = $windowsConsole->getConsoleMode();
                     $windowsConsole->setConsoleMode($mode & ~$enableExtras);
                 }
+
+                return '';
             } else {
-                $this->writer->write(implode('', array_map(fn (string $code): string => $this->csi($code), $action->enable ? [
+                return implode('', array_map(fn (string $code): string => $this->csi($code), $action->enable ? [
                     // Normal tracking: Send mouse X & Y on button press and release
                     '?1000h',
                     // Button-event tracking: Report button motion events (dragging)
@@ -114,27 +117,23 @@ final class AnsiPainter implements Painter
                     '?1003l',
                     '?1002l',
                     '?1000l',
-                ])));
+                ]));
             }
-            return;
         }
 
         if ($action instanceof SaveCursorPosition) {
-            $this->writer->write("\x1B7");
-            return;
+            return "\x1B7";
         }
         if ($action instanceof RestoreCursorPosition) {
-            $this->writer->write("\x1B8");
-            return;
+            return "\x1B8";
         }
 
         if ($action instanceof SetTerminalTitle) {
-            $this->writer->write($this->osc(sprintf("0;%s\x07", $action->title)));
-            return;
+            return $this->osc(sprintf("0;%s\x07", $action->title));
         }
 
         if ($action instanceof SetCursorStyle) {
-            $this->writer->write(sprintf("\x1b[%d q", match($action->cursorStyle) {
+            return sprintf("\x1b[%d q", match($action->cursorStyle) {
                 CursorStyle::DefaultUserShape => 0,
                 CursorStyle::BlinkingBlock => 1,
                 CursorStyle::SteadyBlock => 2,
@@ -143,11 +142,10 @@ final class AnsiPainter implements Painter
                 CursorStyle::BlinkingBar => 5,
                 CursorStyle::SteadyBar => 6,
 
-            }));
-            return;
+            });
         }
 
-        $this->writer->write($this->csi(match (true) {
+        return $this->csi(match (true) {
             $action instanceof SetForegroundColor => sprintf('%dm', $this->colorIndex($action->color, false)),
             $action instanceof SetBackgroundColor => sprintf('%dm', $this->colorIndex($action->color, true)),
             $action instanceof SetRgbBackgroundColor => sprintf('48;2;%d;%d;%dm', $action->r, $action->g, $action->b),
@@ -184,7 +182,7 @@ final class AnsiPainter implements Painter
                 'Do not know how to handle action: %s',
                 $action::class
             ))
-        }));
+        });
     }
 
     private function colorIndex(Colors $termColor, bool $background): int
