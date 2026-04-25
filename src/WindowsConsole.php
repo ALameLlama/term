@@ -54,13 +54,34 @@ final class WindowsConsole
             throw new RuntimeException('Failed to get console handle');
         }
 
-        $this->consoleBufferInfo = $this->ffi->new('CONSOLE_SCREEN_BUFFER_INFO');
-        $this->mode = $this->ffi->new('DWORD');
-        $this->inputRecordRead = $this->ffi->new('INPUT_RECORD[' . self::INPUT_RECORD_BATCH_SIZE . ']');
-        $this->numEventsRead = $this->ffi->new('DWORD');
-        $this->numEventsAvailable = $this->ffi->new('DWORD');
-        $this->inputRecordPeek = $this->ffi->new('INPUT_RECORD[1]');
-        $this->numEventsPeek = $this->ffi->new('DWORD');
+
+        /** @var FFI\CData $consoleBufferInfo */
+        $consoleBufferInfo = FFI::new('CONSOLE_SCREEN_BUFFER_INFO');
+        $this->consoleBufferInfo = $consoleBufferInfo;
+
+        /** @var FFI\CData $mode */
+        $mode = FFI::new('DWORD');
+        $this->mode = $mode;
+
+        /** @var FFI\CData $inputRecordRead */
+        $inputRecordRead = FFI::new('INPUT_RECORD[' . self::INPUT_RECORD_BATCH_SIZE . ']');
+        $this->inputRecordRead = $inputRecordRead;
+
+        /** @var FFI\CData $numEventsRead */
+        $numEventsRead = FFI::new('DWORD');
+
+        $this->numEventsRead = $numEventsRead;
+        /** @var FFI\CData $numEventsAvailable */
+        $numEventsAvailable = FFI::new('DWORD');
+
+        $this->numEventsAvailable = $numEventsAvailable;
+        /** @var FFI\CData $inputRecordPeek */
+        $inputRecordPeek = FFI::new('INPUT_RECORD[1]');
+        $this->inputRecordPeek = $inputRecordPeek;
+
+        /** @var FFI\CData $numEventsPeek */
+        $numEventsPeek = FFI::new('DWORD');
+        $this->numEventsPeek = $numEventsPeek;
     }
 
     public static function getInstance(): self
@@ -138,6 +159,36 @@ final class WindowsConsole
         return $numEventsAvailable;
     }
 
+    public function peekConsoleInput(int $length): FFI\CData
+    {
+        $this->ffi->PeekConsoleInputW($this->handleIn, $this->inputRecordPeek, $length, FFI::addr($this->numEventsPeek));
+
+        return $this->numEventsPeek;
+    }
+
+    /**
+    * @return array{screenBufferSize: array{x: int, y: int}, cursorPosition: array{x: int, y: int}, windowSize: array{width: int, height: int}, maximumWindowSize: array{x: int, y: int}, attributes: int}
+    */
+    public function getConsoleScreenBufferInfo(): array
+    {
+        if (! $this->ffi->GetConsoleScreenBufferInfo($this->handleOut, FFI::addr($this->consoleBufferInfo))) {
+            throw new RuntimeException('Failed to get console screen buffer info');
+        }
+
+        $info = $this->consoleBufferInfo;
+
+        return [
+            'screenBufferSize' => ['x' => $info->dwSize->X, 'y' => $info->dwSize->Y],
+            'cursorPosition' => ['x' => $info->dwCursorPosition->X, 'y' => $info->dwCursorPosition->Y],
+            'windowSize' => [
+                'width' => $info->srWindow->Right - $info->srWindow->Left + 1,
+                'height' => $info->srWindow->Bottom - $info->srWindow->Top + 1,
+            ],
+            'maximumWindowSize' => ['x' => $info->dwMaximumWindowSize->X, 'y' => $info->dwMaximumWindowSize->Y],
+            'attributes' => $info->wAttributes,
+        ];
+    }
+
     /**
      * @return array{eventType: int, keyEvent?: array{keyDown: bool, repeatCount: int, virtualKeyCode: int, unicodeChar: int, controlKeyState: int}, mouseEvent?: array{mousePosition: array{x: int, y: int}, buttonState: int, controlKeyState: int, eventFlags: int}, windowBufferSizeEvent?: array{size: array{x: int, y: int}}, focusEvent?: array{setFocus: bool}}
      */
@@ -188,36 +239,6 @@ final class WindowsConsole
         }
 
         return $input;
-    }
-
-    public function peekConsoleInput(int $length): FFI\CData
-    {
-        $this->ffi->PeekConsoleInputW($this->handleIn, $this->inputRecordPeek, $length, FFI::addr($this->numEventsPeek));
-
-        return $this->numEventsPeek;
-    }
-
-    /**
-    * @return array{screenBufferSize: array{x: int, y: int}, cursorPosition: array{x: int, y: int}, windowSize: array{width: int, height: int}, maximumWindowSize: array{x: int, y: int}, attributes: int}
-    */
-    public function getConsoleScreenBufferInfo(): array
-    {
-        if (! $this->ffi->GetConsoleScreenBufferInfo($this->handleOut, FFI::addr($this->consoleBufferInfo))) {
-            throw new RuntimeException('Failed to get console screen buffer info');
-        }
-
-        $info = $this->consoleBufferInfo;
-
-        return [
-            'screenBufferSize' => ['x' => $info->dwSize->X, 'y' => $info->dwSize->Y],
-            'cursorPosition' => ['x' => $info->dwCursorPosition->X, 'y' => $info->dwCursorPosition->Y],
-            'windowSize' => [
-                'width' => $info->srWindow->Right - $info->srWindow->Left + 1,
-                'height' => $info->srWindow->Bottom - $info->srWindow->Top + 1,
-            ],
-            'maximumWindowSize' => ['x' => $info->dwMaximumWindowSize->X, 'y' => $info->dwMaximumWindowSize->Y],
-            'attributes' => $info->wAttributes,
-        ];
     }
 
     /**

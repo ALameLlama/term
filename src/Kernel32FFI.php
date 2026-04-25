@@ -17,4 +17,6 @@ use FFI;
  * @method bool PeekConsoleInputA(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
  * @method bool PeekConsoleInputW(FFI\CData $hConsoleInput, FFI\CData $lpBuffer, int $nLength, FFI\CData $lpNumberOfEventsRead)
  */
-interface Kernel32FFI {}
+interface Kernel32FFI
+{
+}
