@@ -41,10 +41,10 @@ final class SizeFromWinProvider implements InformationProvider
     }
 
     /**
-    * @param array{screenBufferSize: array{x: int, y: int}} $out
+    * @param array{windowSize: array{width: int, height: int}} $out
     */
     private function parse(array $out): Size
     {
-        return new Size(max(0, (int) ($out['screenBufferSize']['y'])), max(0, (int) ($out['screenBufferSize']['x'])));
+        return new Size(max(0, (int) ($out['windowSize']['height'])), max(0, (int) ($out['windowSize']['width'])));
     }
 }
