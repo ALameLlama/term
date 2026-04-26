@@ -40,6 +40,10 @@ final class WindowsConsole
 
     public function __construct()
     {
+        if (! extension_loaded('ffi')) {
+            throw new RuntimeException('FFI extension is not loaded');
+        }
+
         $this->ffi = self::createKernel32();
 
         $this->handleIn = $this->ffi->GetStdHandle(self::STD_INPUT_HANDLE);
@@ -54,33 +58,32 @@ final class WindowsConsole
             throw new RuntimeException('Failed to get console handle');
         }
 
-
         /** @var FFI\CData $consoleBufferInfo */
-        $consoleBufferInfo = FFI::new('CONSOLE_SCREEN_BUFFER_INFO');
+        $consoleBufferInfo = $this->ffi->new('CONSOLE_SCREEN_BUFFER_INFO');
         $this->consoleBufferInfo = $consoleBufferInfo;
 
         /** @var FFI\CData $mode */
-        $mode = FFI::new('DWORD');
+        $mode = $this->ffi->new('DWORD');
         $this->mode = $mode;
 
         /** @var FFI\CData $inputRecordRead */
-        $inputRecordRead = FFI::new('INPUT_RECORD[' . self::INPUT_RECORD_BATCH_SIZE . ']');
+        $inputRecordRead = $this->ffi->new('INPUT_RECORD[' . self::INPUT_RECORD_BATCH_SIZE . ']');
         $this->inputRecordRead = $inputRecordRead;
 
         /** @var FFI\CData $numEventsRead */
-        $numEventsRead = FFI::new('DWORD');
+        $numEventsRead = $this->ffi->new('DWORD');
 
         $this->numEventsRead = $numEventsRead;
         /** @var FFI\CData $numEventsAvailable */
-        $numEventsAvailable = FFI::new('DWORD');
+        $numEventsAvailable = $this->ffi->new('DWORD');
 
         $this->numEventsAvailable = $numEventsAvailable;
         /** @var FFI\CData $inputRecordPeek */
-        $inputRecordPeek = FFI::new('INPUT_RECORD[1]');
+        $inputRecordPeek = $this->ffi->new('INPUT_RECORD[1]');
         $this->inputRecordPeek = $inputRecordPeek;
 
         /** @var FFI\CData $numEventsPeek */
-        $numEventsPeek = FFI::new('DWORD');
+        $numEventsPeek = $this->ffi->new('DWORD');
         $this->numEventsPeek = $numEventsPeek;
     }
 
